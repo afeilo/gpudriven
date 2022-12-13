@@ -1,0 +1,175 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSQuadSelect
+
+
+struct RenderPatch
+{
+    float2 position;
+    uint lod;
+};
+
+
+ConsumeStructuredBuffer<uint2> _ConsumeNodeList;
+AppendStructuredBuffer<uint2> _TempNodeList;
+//COLOD 装满的Node 
+AppendStructuredBuffer<RenderPatch> _FinalNodeList1;
+//COLOD 装非满的Node 
+AppendStructuredBuffer<RenderPatch> _FinalNodeList2;
+//当前计算的lod等级
+uniform uint _CurLod;
+//相机位置
+uniform float3 _CameraPositionWS;
+//最大网格尺寸
+uniform uint _TopGridSize;
+//最高LodLevel
+uniform uint _MaxLodLevel;
+//控制每个lod的range范围 这里我们用基础的网格大小 * 倍数来做
+uniform uint _LodRange;
+//六个平面
+uniform float4 _Planes[6];
+
+//简单判断最近的距离以此判断是否需要继续细分四叉树
+bool SelectNode(uint2 node, float cellSize, float powMaxSize)
+{
+    int size = cellSize;
+    int x = node.x * size;
+    int z = node.y * size;
+    float dist = 0.0f;
+
+    //计算离x的距离平方
+    if (_CameraPositionWS.x < x)
+    {
+        float d = _CameraPositionWS.x - x;
+        dist += d * d;
+    }
+    else if (_CameraPositionWS.x > x + size)
+    {
+        float d = _CameraPositionWS.x - x - size;
+        dist += d * d;
+    }
+
+    //y轴
+    // {
+    //     float d = _CameraPositionWS.y;
+    //     dist += d * d;
+    // }
+
+    if (_CameraPositionWS.z < z)
+    {
+        float d = z - _CameraPositionWS.z;
+        dist += d * d;
+    }
+    else if (_CameraPositionWS.z > z + size)
+    {
+        float d = _CameraPositionWS.z - z - size;
+        dist += d * d;
+    }
+
+    //(size, 2*size)
+    return dist < powMaxSize;
+}
+
+
+//判断点在视锥体平面内
+bool checkInside(float3 pos)
+{
+    for (int i = 0; i < 6; i++) {
+        float4 plane = _Planes[i];
+        if ((dot(pos, plane.xyz) + plane.w) < 0)
+            return false;
+    }
+    return true;
+}
+
+bool Cull(uint2 pos, uint size)
+{
+    // int size = _TopGridSize >> (_MaxLodLevel - lod);
+    float3 positions[4] = {float3(pos.x, 0, pos.y), float3(pos.x + size, 0, pos.y), float3(pos.x + size, 0, pos.y + size), float3(pos.x, 0, pos.y + size)};
+
+    for (int i = 0; i < 6; i++) {
+        float4 plane = _Planes[i];
+        bool isBreak = false;
+        for (int j = 0; j < 4; j++)
+        {
+            float3 pos = positions[j];
+            if ((dot(pos, plane.xyz) + plane.w) >= 0)
+            {
+                isBreak = true;
+                break;
+            }
+        }
+        //所有的点都再平面的背面 那就被提出
+        if (!isBreak)
+            return false;
+    }
+    return true;
+}
+
+void addNodePatch1(uint x, uint y, uint lod)
+{
+    RenderPatch patch;
+    int size = _TopGridSize >> (_MaxLodLevel - lod);
+    patch.position = uint2(x * size, y * size);
+    patch.lod = lod;
+    _FinalNodeList1.Append(patch);
+}
+
+
+void addNodePatch2(uint x, uint y, uint lod)
+{
+    RenderPatch patch;
+    int size = _TopGridSize >> (_MaxLodLevel - lod + 1);
+    patch.position = uint2(x * size, y * size);
+    patch.lod = lod;
+    if (Cull(patch.position, size))
+        _FinalNodeList2.Append(patch);
+}
+
+
+
+[numthreads(1,1,1)]
+void CSQuadSelect(uint3 id : SV_DispatchThreadID)
+{
+    uint2 node = _ConsumeNodeList.Consume();
+    int size = _TopGridSize >> (_MaxLodLevel - _CurLod);
+    if (!Cull(uint2(node.x * size, node.y * size), size)) return;
+
+    float powMaxSize = size * size * _LodRange * _LodRange * 0.25f;
+    
+    if (SelectNode(node, size, powMaxSize) && _CurLod > 0)
+    {
+        if (SelectNode(uint2(node.x * 2, node.y * 2), size / 2, powMaxSize))
+        {
+            _TempNodeList.Append(uint2(node.x * 2, node.y * 2));
+        }else
+        {
+            addNodePatch2(node.x * 2, node.y * 2, _CurLod);
+        }
+        if (SelectNode(uint2(node.x * 2 + 1, node.y * 2), size / 2, powMaxSize))
+        {
+            _TempNodeList.Append(uint2(node.x * 2 + 1, node.y * 2));
+        }
+        else
+        {
+            addNodePatch2(node.x * 2 + 1, node.y * 2, _CurLod);
+        }
+        if (SelectNode(uint2(node.x * 2 + 1, node.y * 2 + 1), size / 2, powMaxSize))
+        {
+            _TempNodeList.Append(uint2(node.x * 2 + 1, node.y * 2 + 1));
+        }else
+        {
+            addNodePatch2(node.x * 2 + 1, node.y * 2 + 1, _CurLod);
+        }
+        if (SelectNode(uint2(node.x * 2, node.y * 2 + 1), size / 2, powMaxSize))
+        {
+            _TempNodeList.Append(uint2(node.x * 2, node.y * 2 + 1));
+        }else
+        {
+            addNodePatch2(node.x * 2, node.y * 2 + 1, _CurLod);
+        }
+    }
+    else
+    {
+        addNodePatch1(node.x, node.y, _CurLod);
+    }
+}
