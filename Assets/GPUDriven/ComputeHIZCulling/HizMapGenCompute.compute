@@ -4,7 +4,7 @@
 #pragma multi_compile _ _REVERSED_Z
 // Create a RenderTexture with enableRandomWrite flag and set it
 // with cs.SetTexture
-RWTexture2D<float4> _HizMapTexure;
+RWTexture2D<float4> _HizMapTexture;
 Texture2D<float4> _InTexture; //输入
 RWTexture2D<float4> _OutTexture; //输出 作为下一次的输入
 
@@ -17,8 +17,8 @@ void Blit(uint3 id : SV_DispatchThreadID)
     if (id.x >= _DstSize.x || id.y >= _DstSize.y)
         return;
     uint2 src_coord = floor(id.xy * _SrcSize.xy / _DstSize.xy);
-    _HizMapTexure[id.xy] = _InTexture[src_coord];
-    _OutTexture[id.xy] = _HizMapTexure[id.xy];
+    _HizMapTexture[id.xy] = _InTexture[src_coord];
+    _OutTexture[id.xy] = _HizMapTexture[id.xy];
 }
 
 [numthreads(8,8,1)]
@@ -38,6 +38,6 @@ void BlitMip(uint3 id : SV_DispatchThreadID)
     #else
         float d = max(max(d1, d2), max(d3, d4));
     #endif
-    _HizMapTexure[id.xy] = d;
+    _HizMapTexture[id.xy] = d;
     _OutTexture[id.xy] = d;
 }

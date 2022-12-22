@@ -88,15 +88,19 @@ public class QuadTreeBuilder
         _commandBuffer.name = "QuadTreeSelect";
         _TempNodeList1 = new ComputeBuffer(topNodeCount * maxNodeCount, 8, ComputeBufferType.Append);
         _TempNodeList2 = new ComputeBuffer(topNodeCount * maxNodeCount, 8, ComputeBufferType.Append);
-        _FinalNodeList1 = new ComputeBuffer(topNodeCount * maxNodeCount, 12, ComputeBufferType.Append);
-        _FinalNodeList2 = new ComputeBuffer(topNodeCount * maxNodeCount, 12, ComputeBufferType.Append);
+        _FinalNodeList1 = new ComputeBuffer(topNodeCount * maxNodeCount, 20, ComputeBufferType.Append);
+        _FinalNodeList2 = new ComputeBuffer(topNodeCount * maxNodeCount, 20, ComputeBufferType.Append);
         _IndirectArgsBuffer = new ComputeBuffer(3, 4, ComputeBufferType.IndirectArguments);
         _IndirectArgsBuffer.SetData(new uint[]{1,1,1});
         _IndirectArgsBuffer1 = new ComputeBuffer(5, 4, ComputeBufferType.IndirectArguments);
         _IndirectArgsBuffer2 = new ComputeBuffer(5, 4, ComputeBufferType.IndirectArguments);
         _ComputeShader.SetBuffer(_kernelIndex, ShaderConstants.FinalNodeList1, _FinalNodeList1);
         _ComputeShader.SetBuffer(_kernelIndex, ShaderConstants.FinalNodeList2, _FinalNodeList2);
-        
+        if(SystemInfo.usesReversedZBuffer){
+            _ComputeShader.EnableKeyword("_REVERSED_Z");
+        }else{
+            _ComputeShader.DisableKeyword("_REVERSED_Z");
+        }
     }
     
     void Create(QuadTreeData config)
@@ -117,6 +121,9 @@ public class QuadTreeBuilder
         _ComputeShader.SetInt(ShaderConstants.MaxLodLevel, _MaxLodLevel);
         _ComputeShader.SetInt(ShaderConstants.TopGridSize, topSize);
         _ComputeShader.SetInt( ShaderConstants.LodRange, config.lodRange);
+        _ComputeShader.SetInt(ShaderConstants.HeightMapDeep, config.heightMapDeep);
+        _ComputeShader.SetInt(ShaderConstants.TopHeightMapSize, 1 << config.heightMapLevel);
+        _ComputeShader.SetTexture(0, ShaderConstants.HeightBoundsTexture, config.heightBoundsTexture);
         _TopNodeBuffer = new ComputeBuffer(datas.Length, 8, ComputeBufferType.Append);
         _TopNodeBuffer.SetData(datas);
         Debug.Log(datas.Length);
@@ -154,6 +161,7 @@ public class QuadTreeBuilder
             var temp = _TempNodeList == _TempNodeList1 ? _TempNodeList2 : _TempNodeList1;
             _ConsumeNodeList = _TempNodeList;
             _TempNodeList = temp;
+            // LogPatchArgs(_IndirectArgsBuffer, 3, 0, i + ":");
         }
         _commandBuffer.CopyCounterValue(_FinalNodeList1, _IndirectArgsBuffer1, 4);
         _commandBuffer.CopyCounterValue(_FinalNodeList2, _IndirectArgsBuffer2, 4);
@@ -201,10 +209,10 @@ public class QuadTreeBuilder
         _IndirectArgsBuffer2.Dispose();
     }
     
-    private void LogPatchArgs(ComputeBuffer buffer, int count, int index){
+    private void LogPatchArgs(ComputeBuffer buffer, int count, int index, string args = ""){
         var data = new uint[count];
         buffer.GetData(data);
-        Debug.Log(data[index]);
+        Debug.Log(args + data[index]);
     }
     private class ShaderConstants{
         public static readonly int ConsumeNodeList = Shader.PropertyToID("_ConsumeNodeList");
@@ -217,6 +225,11 @@ public class QuadTreeBuilder
         public static readonly int TopGridSize = Shader.PropertyToID("_TopGridSize");
         public static readonly int MaxLodLevel = Shader.PropertyToID("_MaxLodLevel");
         public static readonly int Planes = Shader.PropertyToID("_Planes");
+        public static readonly int HeightBoundsTexture
+            = Shader.PropertyToID("_HeightBoundsTexture");
+        public static readonly int HeightMapDeep = Shader.PropertyToID("_HeightMapDeep");
+        public static readonly int TopHeightMapSize = Shader.PropertyToID("_TopHeightMapSize");
+
     }
     
 }

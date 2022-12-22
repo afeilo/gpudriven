@@ -13,6 +13,9 @@ public class TerrainRender : MonoBehaviour
     QuadTreeBuilder _quadTree;
     Mesh _tileMesh;
     Mesh _halfTileMesh;
+    Mesh _boundMesh;
+
+    private Material _boundMaterial;
     // Start is called before the first frame update
 
     private VTPageTable _vtPageTable;
@@ -99,6 +102,40 @@ public class TerrainRender : MonoBehaviour
             _halfTileMesh.SetIndices(indices, MeshTopology.Triangles, 0);
         }
 
+        // generate half tile mesh
+        {
+            _boundMesh = new Mesh();
+            //设置顶点
+            _boundMesh.vertices = new Vector3[]
+            {   new Vector3(0, 0, 0),
+                new Vector3(1, 0, 0),
+                new Vector3(1, 1, 0),
+                new Vector3(0, 1, 0),
+                new Vector3(0, 1, 1),
+                new Vector3(1, 1, 1),
+                new Vector3(1, 0, 1),
+                new Vector3(0, 0, 1),
+            };
+            //设置三角形顶点顺序，顺时针设置
+            _boundMesh.triangles = new int[]
+            {
+                0, 2, 1,
+                0, 3, 2,
+                3, 4, 2,
+                4, 5, 2,
+                4, 7, 5,
+                7, 6, 5,
+                7, 0, 1,
+                6, 7, 1,
+                4, 3, 0,
+                4, 0, 7,
+                2, 5, 6,
+                2, 6, 1
+            };
+            _boundMaterial = new Material(Shader.Find("Unlit/NewUnlitShader"));
+            _boundMaterial.enableInstancing = true;
+        }
+
         #endregion
         _quadTree.IndirectArgsBuffer1.SetData(new uint[]{_tileMesh.GetIndexCount(0),0,0,0,0});
         _quadTree.IndirectArgsBuffer2.SetData(new uint[]{_halfTileMesh.GetIndexCount(0),0,0,0,0});
@@ -132,9 +169,36 @@ public class TerrainRender : MonoBehaviour
         Material.SetBuffer("PatchList", _quadTree.FinalNodeList1);
         Graphics.DrawMeshInstancedIndirect(_tileMesh, 0, Material, new Bounds(Vector3.zero, Vector3.one * 10240),
             _quadTree.IndirectArgsBuffer1);
+
         Material2.SetBuffer("PatchList", _quadTree.FinalNodeList2);
         Graphics.DrawMeshInstancedIndirect(_halfTileMesh, 0, Material2, new Bounds(Vector3.zero, Vector3.one * 10240),
             _quadTree.IndirectArgsBuffer2);
+
+        #region  debug heightbounds
+
+        // var matrixs = new List<Matrix4x4>();
+        // for (int i = 0; i < _quadTree.FinalPatch1.Length; i++)
+        // {
+        //     var patch = _quadTree.FinalPatch1[i];
+        //     var scale = 1 << ((int)patch.lod + 5);
+        //     var mat = Matrix4x4.TRS(new Vector3(patch.position.x, patch.minmax.x, patch.position.y), Quaternion.identity,
+        //         new Vector3(scale, patch.minmax.y - patch.minmax.x, scale));
+        //     matrixs.Add(mat);
+        // }
+        // Graphics.DrawMeshInstanced(_boundMesh, 0, _boundMaterial, matrixs);
+        //
+        // matrixs.Clear();
+        // for (int i = 0; i < _quadTree.FinalPatch2.Length; i++)
+        // {
+        //     var patch = _quadTree.FinalPatch2[i];
+        //     var scale = 1 << ((int)patch.lod + 5 - 1);
+        //     var mat = Matrix4x4.TRS(new Vector3(patch.position.x, patch.minmax.x, patch.position.y), Quaternion.identity,
+        //         new Vector3(scale, patch.minmax.y - patch.minmax.x, scale));
+        //     matrixs.Add(mat);
+        // }
+        // Graphics.DrawMeshInstanced(_boundMesh, 0, _boundMaterial, matrixs);
+        //
+        #endregion
     }
 
     private void OnDestroy()

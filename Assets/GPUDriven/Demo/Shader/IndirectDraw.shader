@@ -23,6 +23,7 @@ Shader "Unlit/IndirectDraw"
             #pragma vertex vert
             #pragma fragment frag
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS
+            #include "../../CDLod/CommonInput.hlsl"
             // make fog work
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/EntityLighting.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
@@ -57,11 +58,6 @@ Shader "Unlit/IndirectDraw"
             float4 _NormalMap_TexelSize;
             float4 _LookupParam;
 
-            struct RenderPatch
-            {
-                float2 position;
-                uint lod;
-            };
 
             StructuredBuffer<RenderPatch> PatchList;
 
@@ -108,7 +104,6 @@ Shader "Unlit/IndirectDraw"
                 half maxDistance = _MeshResolution * scale * _LerpRange;
                 half minDistance = maxDistance / 2;
                 half morphLerpK = revertLerp((maxDistance - minDistance) * _LerpValue + minDistance, maxDistance, d);
-                // morphLerpK = 0;
                 vertex = morphVertex((v.vertex), vertex, morphLerpK, float2(scale, scale));
 
                 #if _MAIN_LIGHT_SHADOWS

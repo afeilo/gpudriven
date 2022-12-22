@@ -43,7 +43,8 @@ public class QuadTreeData : ScriptableObject
     /// 高度图深度
     /// </summary>
     public int heightMapDeep = 0;
-    
+
+    public Texture2D heightBoundsTexture;
     public QuadTreeLevelConfig[] configs;
     /// <summary>
     /// 四叉树实例

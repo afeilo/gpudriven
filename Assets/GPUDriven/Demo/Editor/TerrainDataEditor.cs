@@ -33,7 +33,7 @@ public class TerrainDataEditor : EditorWindow
     private Mesh mesh;
     private Shader shader;
     private bool genHeightPrefab = false;
-
+    private Texture2D HeightBoundTexture;
     private void Awake()
     {
         if (null == treeData)
@@ -204,7 +204,10 @@ public class TerrainDataEditor : EditorWindow
 
                 ExportNormalMap(terrain, "normal_" + terrain.name);
                 ExportQuadTreeHeightMap(terrain, terrain.terrainData.heightmapResolution - 1, 0, 0,
-                    0, 0, "height_" + terrain.name, Vector3.zero);
+                    0, 0, "height_" + terrain.name, Vector3.zero, new Vector3Int(-1, -1, -1));
+                HeightBoundTexture = new Texture2D(1 << (boundDepthX - data.heightMapLevel),
+                    1 << (boundDepthZ - data.heightMapLevel), TextureFormat.RGB24, true, true);
+                int maxLod = heightQuadDepth; //最大lod
                 for (int i = 0; i < xcount; i++)
                 {
                     for (int j = 0; j < zcount; j++)
@@ -221,10 +224,34 @@ public class TerrainDataEditor : EditorWindow
                         //分割
                         ExportQuadTreeHeightMap(terrain, heightSize, i * (1 << xHeightMaxDepth) * heightSize,
                             j * (1 << zHeightMaxDepth) * heightSize,
-                            xHeightMaxDepth, zHeightMaxDepth, qtl.heightMapRootPath, new Vector3(qtl.x, qtl.y, 1));
+                            xHeightMaxDepth, zHeightMaxDepth, qtl.heightMapRootPath, new Vector3(qtl.x, qtl.y, 1), new Vector3Int(i,j,maxLod));
                     }
                 }
 
+                // for (int l = 1; l < HeightBoundTexture.mipmapCount; l++)
+                // {
+                //     var w = HeightBoundTexture.width >> l;
+                //     var h = HeightBoundTexture.height >> l;
+                //     for (int i = 0; i < w; i++)
+                //     {
+                //         for (int j = 0; j < h; j++)
+                //         {
+                //             var c1 = HeightBoundTexture.GetPixel(i, j, l - 1);
+                //             var c2 = HeightBoundTexture.GetPixel(i + 1, j, l - 1);
+                //             var c3 = HeightBoundTexture.GetPixel(i, j + 1, l - 1);
+                //             var c4 = HeightBoundTexture.GetPixel(i + 1, j + 1, l - 1);
+                //             var min = Mathf.Min(c1.r, c2.r, c3.r, c4.r);
+                //             var max = Mathf.Max(c1.g, c2.g, c3.g, c4.g);
+                //             // HeightBoundTexture.SetPixel(i, j, new Color(min, max , 0, 1), l);
+                //             HeightBoundTexture.SetPixel(i, j, new Color(l %2 == 0 ? 1 : 0, l %2 != 0 ? 1 : 0 , 0, 1), l);
+                //         }
+                //     }
+                // }
+                //
+                HeightBoundTexture.Apply(false);
+                AssetDatabase.CreateAsset(HeightBoundTexture, HEIGHT_PATH + "/heightBounds.asset");
+                AssetDatabase.Refresh();
+                
                 data.mapLevel = new Vector2Int(boundDepthX, boundDepthZ);
             }
 
@@ -266,12 +293,14 @@ public class TerrainDataEditor : EditorWindow
     }
 
     void ExportQuadTreeHeightMap(Terrain terrain, int heightSize, int offsetX, int offsetZ, int skipDepthX,
-        int skipDepthZ, string key, Vector3 t)
+        int skipDepthZ, string key, Vector3 t, Vector3Int heightBoundsInfo)
     {
         var skipx = 1 << skipDepthX;
         var skipz = 1 << skipDepthZ;
-        Texture2D texture2D = new Texture2D(heightSize + 1, heightSize + 1, TextureFormat.R16, false);
+        Texture2D texture2D = new Texture2D(heightSize + 1, heightSize + 1, TextureFormat.RHalf, false);
         // int heightSize = 129;
+        float maxHeight = float.MinValue;
+        float minHeight = float.MaxValue;
         for (int i = 0; i <= heightSize; i++)
         {
             for (int j = 0; j <= heightSize; j++)
@@ -284,10 +313,19 @@ public class TerrainDataEditor : EditorWindow
                     Debug.LogError("hightmap scale is so small");
                 }
 
-                texture2D.SetPixel(i, j, new Color(height / treeData.heightMapScale, 0, 0, 1));
+                height = height / treeData.heightMapScale;
+                maxHeight = height > maxHeight ? height : maxHeight;
+                minHeight = height < minHeight ? height : minHeight;
+                texture2D.SetPixel(i, j, new Color(height, 0, 0, 1));
             }
         }
 
+        if (heightBoundsInfo.z >= 0)
+        {
+            Debug.Log(heightBoundsInfo.z +":"+ heightBoundsInfo.x +", "+heightBoundsInfo.y + " :(" +minHeight * 500+ "," +maxHeight * 500 +")");
+            HeightBoundTexture.SetPixel(heightBoundsInfo.x, heightBoundsInfo.y, new Color(minHeight, maxHeight, 0, 0),
+                heightBoundsInfo.z);
+        }
 
         texture2D.Apply();
         string path = HEIGHT_PATH + "/" + key + ".asset";
@@ -326,13 +364,13 @@ public class TerrainDataEditor : EditorWindow
         int offsetAddX = heightSize * (1 << skipDepthX);
         int offsetAddZ = heightSize * (1 << skipDepthZ);
         ExportQuadTreeHeightMap(terrain, heightSize, offsetX, offsetZ + offsetAddZ, skipDepthX, skipDepthZ, key + "01",
-            new Vector3(t.x, t.y + offsetAddZ, t.z / 2.0f));
+            new Vector3(t.x, t.y + offsetAddZ, t.z / 2.0f), new Vector3Int(heightBoundsInfo.x * 2, heightBoundsInfo.y * 2 + 1, heightBoundsInfo.z - 1));
         ExportQuadTreeHeightMap(terrain, heightSize, offsetX + offsetAddX, offsetZ + offsetAddZ, skipDepthX, skipDepthZ,
-            key + "11", new Vector3(t.x + offsetAddX, t.y + offsetAddZ, t.z / 2.0f));
+            key + "11", new Vector3(t.x + offsetAddX, t.y + offsetAddZ, t.z / 2.0f), new Vector3Int(heightBoundsInfo.x * 2 + 1, heightBoundsInfo.y * 2 + 1, heightBoundsInfo.z - 1));
         ExportQuadTreeHeightMap(terrain, heightSize, offsetX, offsetZ, skipDepthX, skipDepthZ, key + "00",
-            new Vector3(t.x, t.y, t.z / 2.0f));
+            new Vector3(t.x, t.y, t.z / 2.0f), new Vector3Int(heightBoundsInfo.x * 2, heightBoundsInfo.y * 2, heightBoundsInfo.z - 1));
         ExportQuadTreeHeightMap(terrain, heightSize, offsetX + offsetAddX, offsetZ, skipDepthX, skipDepthZ, key + "10",
-            new Vector3(t.x + offsetAddX, t.y, t.z / 2.0f));
+            new Vector3(t.x + offsetAddX, t.y, t.z / 2.0f), new Vector3Int(heightBoundsInfo.x * 2 + 1, heightBoundsInfo.y * 2, heightBoundsInfo.z - 1));
     }
 
     void ExportTexture(Texture t, int W, int H, Vector2Int scale, GraphicsFormat format)

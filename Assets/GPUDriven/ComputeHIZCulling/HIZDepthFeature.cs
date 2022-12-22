@@ -86,7 +86,7 @@ public class HIZDepthFeature : ScriptableRendererFeature
                 cmd.SetComputeVectorParam(computeShader, ShaderConstants.DstSize, new Vector4(HizMap.width, HizMap.height, 0, 0));
                 cmd.SetComputeTextureParam(computeShader, 0, ShaderConstants.InTexture, ShaderConstants.CameraDepthTexture);
                 cmd.SetComputeTextureParam(computeShader, 0, ShaderConstants.OutTexture, ShaderConstants.TempTexure1);
-                cmd.SetComputeTextureParam(computeShader, 0, ShaderConstants.HizMapTexure, HizMap, 0);
+                cmd.SetComputeTextureParam(computeShader, 0, ShaderConstants.HizMapTexture, HizMap, 0);
                 cmd.DispatchCompute(computeShader, 0, Mathf.CeilToInt(HizMap.width / 8.0f), Mathf.CeilToInt(HizMap.height / 8.0f), 1);
 
                 int InTexture = ShaderConstants.TempTexure1;
@@ -105,7 +105,7 @@ public class HIZDepthFeature : ScriptableRendererFeature
                     
                     cmd.SetComputeTextureParam(computeShader, 1, ShaderConstants.InTexture, InTexture);
                     cmd.SetComputeTextureParam(computeShader, 1, ShaderConstants.OutTexture, OutTexture);
-                    cmd.SetComputeTextureParam(computeShader, 1, ShaderConstants.HizMapTexure, HizMap, level);
+                    cmd.SetComputeTextureParam(computeShader, 1, ShaderConstants.HizMapTexture, HizMap, level);
                     cmd.DispatchCompute(computeShader, 1, Mathf.CeilToInt(width / 8.0f), Mathf.CeilToInt(height / 8.0f), 1);
                     
                     cmd.ReleaseTemporaryRT(InTexture);
@@ -118,7 +118,7 @@ public class HIZDepthFeature : ScriptableRendererFeature
                 cmd.SetGlobalVector(ShaderConstants.HizCameraPosition, camera.transform.position);
                 cmd.SetGlobalMatrix(ShaderConstants.HizCameraMatrixVP, GL.GetGPUProjectionMatrix(camera.projectionMatrix, false) *
                                                                        camera.worldToCameraMatrix);
-                cmd.SetGlobalTexture(ShaderConstants.HizMapTexure, HizMap);
+                cmd.SetGlobalTexture(ShaderConstants.HizMapTexture, HizMap);
                 cmd.SetGlobalVector(ShaderConstants.HizMapParam, new Vector4(HizMap.width, HizMap.height, HizMap.mipmapCount));
                
                 cmd.ReleaseTemporaryRT(InTexture);
@@ -152,7 +152,7 @@ public class HIZDepthFeature : ScriptableRendererFeature
             public static readonly int OutTexture = Shader.PropertyToID("_OutTexture");
             public static readonly int SrcSize = Shader.PropertyToID("_SrcSize");
             public static readonly int DstSize = Shader.PropertyToID("_DstSize");
-            public static readonly int HizMapTexure = Shader.PropertyToID("_HizMapTexure");
+            public static readonly int HizMapTexture = Shader.PropertyToID("_HizMapTexture");
             public static readonly int HizMapParam = Shader.PropertyToID("_HizMapParam");
             public static readonly int TempTexure1 = Shader.PropertyToID("_TempTexure1");
             public static readonly int TempTexure2 = Shader.PropertyToID("_TempTexure2");

@@ -1,13 +1,15 @@
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel CSQuadSelect
+#pragma multi_compile _ _REVERSED_Z  //不reversed 在opengl上很难剔除干净
+#include "CommonInput.hlsl"
+#include "HIZ.hlsl"
 
-
-struct RenderPatch
-{
-    float2 position;
-    uint lod;
-};
-
+//高度图
+Texture2D<float4> _HeightBoundsTexture;
+//高度图深度，最大lod
+uniform uint _HeightMapDeep;
+//最大高度图尺寸
+uniform uint _TopHeightMapSize;
 
 ConsumeStructuredBuffer<uint2> _ConsumeNodeList;
 AppendStructuredBuffer<uint2> _TempNodeList;
@@ -69,6 +71,23 @@ bool SelectNode(uint2 node, float cellSize, float powMaxSize)
     return dist < powMaxSize;
 }
 
+//获取物体的bounds 这里简单模拟一下local bounds
+Bounds GetBounds(uint2 pos,uint size, uint lod)
+{
+    
+    uint deep = min(_MaxLodLevel -  lod, _HeightMapDeep);
+    int heightSize = _TopGridSize >> deep;
+    int x = floor(pos.x / heightSize);
+    int y = floor(pos.y / heightSize);
+
+    float4 heightColor = _HeightBoundsTexture.mips[_HeightMapDeep - deep][uint2(x, y)];
+    
+    Bounds bounds;
+    bounds.minPosition = float3(pos.x, heightColor.x * 500, pos.y);
+    bounds.maxPosition = float3(pos.x + size, heightColor.y * 500, pos.y + size);
+    return bounds;
+}
+
 
 //判断点在视锥体平面内
 bool checkInside(float3 pos)
@@ -81,8 +100,48 @@ bool checkInside(float3 pos)
     return true;
 }
 
-bool Cull(uint2 pos, uint size)
+bool FrustumCull(Bounds worldBounds)
 {
+
+    float3 minp = worldBounds.minPosition;
+    float3 maxp = worldBounds.maxPosition;
+    
+    float3 positions[8] = {
+        float3(minp.x, minp.y, minp.z),
+        float3(minp.x, maxp.y, minp.z),
+        float3(minp.x, minp.y, maxp.z),
+        float3(minp.x, maxp.y, maxp.z),
+        float3(maxp.x, minp.y, minp.z),
+        float3(maxp.x, maxp.y, minp.z),
+        float3(maxp.x, minp.y, maxp.z),
+        float3(maxp.x, maxp.y, maxp.z),
+    };
+
+    for (int i = 0; i < 6; i++) {
+        float4 plane = _Planes[i];
+        bool isBreak = false;
+        for (int j = 0; j < 8; j++)
+        {
+            float3 pos = positions[j];
+            if ((dot(pos, plane.xyz) + plane.w) >= 0)
+            {
+                isBreak = true;
+                break;
+            }
+        }
+        //所有的点都再平面的背面 那就被提出
+        if (!isBreak)
+            return false;
+    }
+    return true;
+}
+
+bool Cull(uint2 pos, uint size, uint lod)
+{
+    // return true;
+
+    Bounds bounds = GetBounds(pos, size, lod);
+    return FrustumCull(bounds) && OcclusionCulling(bounds);
     // int size = _TopGridSize >> (_MaxLodLevel - lod);
     float3 positions[4] = {float3(pos.x, 0, pos.y), float3(pos.x + size, 0, pos.y), float3(pos.x + size, 0, pos.y + size), float3(pos.x, 0, pos.y + size)};
 
@@ -109,8 +168,12 @@ void addNodePatch1(uint x, uint y, uint lod)
 {
     RenderPatch patch;
     int size = _TopGridSize >> (_MaxLodLevel - lod);
-    patch.position = uint2(x * size, y * size);
+    patch.position = float2(x * size, y * size);
     patch.lod = lod;
+
+    Bounds localBounds = GetBounds(patch.position, size, lod);
+    patch.minmax = float2(localBounds.minPosition.y, localBounds.maxPosition.y);
+    
     _FinalNodeList1.Append(patch);
 }
 
@@ -119,9 +182,12 @@ void addNodePatch2(uint x, uint y, uint lod)
 {
     RenderPatch patch;
     int size = _TopGridSize >> (_MaxLodLevel - lod + 1);
-    patch.position = uint2(x * size, y * size);
+    patch.position = float2(x * size, y * size);
     patch.lod = lod;
-    if (Cull(patch.position, size))
+
+    Bounds localBounds = GetBounds(patch.position, size, lod - 1);
+    patch.minmax = float2(localBounds.minPosition.y, localBounds.maxPosition.y);
+    if (Cull(patch.position, size, lod))
         _FinalNodeList2.Append(patch);
 }
 
@@ -132,7 +198,7 @@ void CSQuadSelect(uint3 id : SV_DispatchThreadID)
 {
     uint2 node = _ConsumeNodeList.Consume();
     int size = _TopGridSize >> (_MaxLodLevel - _CurLod);
-    if (!Cull(uint2(node.x * size, node.y * size), size)) return;
+    if (!Cull(uint2(node.x * size, node.y * size), size, _CurLod)) return;
 
     float powMaxSize = size * size * _LodRange * _LodRange * 0.25f;
     

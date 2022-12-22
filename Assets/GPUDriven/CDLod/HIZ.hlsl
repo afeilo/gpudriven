@@ -1,20 +1,9 @@
-// Each #kernel tells which function to compile; you can have many kernels
-#pragma kernel CSMain
-#pragma multi_compile _ _REVERSED_Z  //不reversed 在opengl上很难剔除干净
-
-uint instanceCount;
-StructuredBuffer<float4x4> localToWorldMatrixs;
-AppendStructuredBuffer<float4x4> positionBuffer;
-RWStructuredBuffer<uint> argsBuffer;
-float4x4 _HizCameraMatrixVP;
+#ifndef HIZ
+#define HIZ
+#include "CommonInput.hlsl"
+uniform float4x4 _HizCameraMatrixVP;
 Texture2D<float4> _HizMapTexture;
 uniform float4 _HizMapParam;
-
-struct Bounds
-{
-    float3 minPosition;
-    float3 maxPosition;
-};
 
 float SampleLevel(float2 uv, float mip, float texSize)
 {
@@ -40,23 +29,13 @@ float SampleLevelNeighbour(float2 minuv, float2 maxuv, float mip, float texSize)
     return d;
 }
 
-
-//获取物体的bounds 这里简单模拟一下local bounds
-Bounds GetBounds(uint index)
-{
-    Bounds bounds;
-    bounds.minPosition = float3(-0.5f, -0.5f, -0.5f);
-    bounds.maxPosition = float3(0.5f, 0.5f, 0.5f);
-    return bounds;
-}
-
 float3 GetClipUVD(float4x4 localToClipMat, float4 localPosition)
 {
     float4 p = mul(localToClipMat, localPosition);
     p = p / p.w;
     p.xy = (p.xy + 1) / 2.0;
     if(p.z < 0){
-        #if _REVERSE_Z
+        #if _REVERSED_Z
         p.z = 1;
         #else
         p.z = 0;
@@ -65,12 +44,11 @@ float3 GetClipUVD(float4x4 localToClipMat, float4 localPosition)
     return p;
 }
 
-Bounds GetClipBounds(uint index)
+Bounds GetClipBounds(Bounds worldBounds)
 {
-    Bounds localBounds = GetBounds(index);
-    float3 minp = localBounds.minPosition;
-    float3 maxp = localBounds.maxPosition;
-    float4x4 localToClipMat = mul(_HizCameraMatrixVP, localToWorldMatrixs[index]);
+    float3 minp = worldBounds.minPosition;
+    float3 maxp = worldBounds.maxPosition;
+    float4x4 localToClipMat = _HizCameraMatrixVP;
     float3 p1 = GetClipUVD(localToClipMat, float4(minp.x, minp.y, minp.z, 1));
     float3 p2 = GetClipUVD(localToClipMat, float4(minp.x, maxp.y, minp.z, 1));
     float3 p3 = GetClipUVD(localToClipMat, float4(minp.x, maxp.y, maxp.z, 1));
@@ -91,27 +69,17 @@ Bounds GetClipBounds(uint index)
     return nBounds;
 }
 
-
-bool OcclusionCulling(uint index)
+bool OcclusionCulling(Bounds worldBounds)
 {
     //根据bounds计算lod
-    Bounds clipBounds = GetClipBounds(index);
+    Bounds clipBounds = GetClipBounds(worldBounds);
     float3 minp = clipBounds.minPosition;
     float3 maxp = clipBounds.maxPosition;
-    if (minp.x >= 1 || minp.y >= 1 || maxp.x <= 0 || maxp.y <= 0)
-        return false;
-    #if _REVERSED_Z
-        if (minp.z <= 0)
-            return false;
-    #else
-        if (maxp.z >= 1)
-            return false;
-    #endif
     float2 uvoffset = maxp.xy - minp.xy;
     float distance = max(uvoffset.x * _HizMapParam.x, uvoffset.y * _HizMapParam.y);
     uint mip = clamp(ceil(log2(distance)), 0, _HizMapParam.z - 1);
     float d = SampleLevelNeighbour(minp, maxp, mip, _HizMapParam.x);
-
+    
     #if _REVERSED_Z
     float z = maxp.z;
     if (d > z)
@@ -121,32 +89,7 @@ bool OcclusionCulling(uint index)
     if (d < z)
         return false;
     #endif
-    //
-    // float4x4 mat = localToWorldMatrixs[index];
-    // float4 clipPos = mul(mul(_HizCameraMatrixVP,mat), float4(0,0,0, 1));
-    // //比较深度值
-    // float2 uv = clipPos.xy / clipPos.w;
-    // float z = clipPos.z / clipPos.w;
-    // if (uv.x <= -1 || uv.y <= -1 || uv.x >= 1 || uv.y >= 1 || z < 0)
-    //     return false;
-    // uv = (uv + 1) / 2;
-    // #if _REVERSED_Z
-    // if (d > z)
-    //     return false;
-    // #else
-    // if (d < z)
-    //     return false;
-    // #endif
     return true;
 }
 
-[numthreads(640,1,1)]
-void CSMain(uint3 id : SV_DispatchThreadID)
-{
-    if (id.x >= instanceCount)
-        return;
-    if (!OcclusionCulling(id.x))
-        return;
-    positionBuffer.Append(localToWorldMatrixs[id.x]);
-    InterlockedAdd(argsBuffer[1], 1);
-}
+#endif
