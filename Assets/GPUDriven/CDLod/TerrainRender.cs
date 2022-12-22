@@ -8,6 +8,8 @@ public class TerrainRender : MonoBehaviour
     public ComputeShader ComputeShader;
     // public QuadTreeConfig TreeConfig;
     public QuadTreeData TreeData;
+    public TerrainData TerrainData;
+    public Texture2D NormalMap;
     int TILE_RESOLUTION;
     int PATCH_VERT_RESOLUTION;
     QuadTreeBuilder _quadTree;
@@ -33,6 +35,49 @@ public class TerrainRender : MonoBehaviour
     {
         _quadTree = new QuadTreeBuilder(ComputeShader, TreeData);
         VtPageTable.SetQuadTreeData(TreeData);
+        #region Copy MaterialData
+        for (int i = 0; i < 4; i++)
+        {
+            var layer = TerrainData.terrainLayers[i];
+            Material.SetTexture("_Splat" + i, layer.diffuseTexture);
+            Material.SetTextureOffset("_Splat" + i, layer.tileOffset);
+            Material.SetTextureScale("_Splat" + i, (Vector2.one * 2048.0f) / layer.tileSize);
+            Material.SetTexture("_Normal" + i, layer.normalMapTexture);
+            Material.SetTexture("_Mask" + i, layer.maskMapTexture);
+            Material.SetVector("_DiffuseRemapScale"+i, layer.diffuseRemapMax);
+            Material.SetVector("_MaskMapRemapOffset"+i, layer.maskMapRemapMin);
+            Material.SetVector("_MaskMapRemapScale"+i, layer.maskMapRemapMax);
+            Material.SetFloat("_Metallic"+i, layer.metallic);
+            Material.SetFloat("_Smoothness"+i, layer.smoothness);
+            Material.SetFloat("_NormalScale"+i, layer.normalScale);
+            Material.SetFloat("_LayerHasMask" + i, layer.maskMapTexture == null ? 0 : 1);
+        }
+        Material.SetTexture("_Control", TerrainData.alphamapTextures[0]);
+        Material.SetTexture("_TerrainNormalmapTexture", NormalMap);
+        Material.EnableKeyword("_NORMALMAP");
+        Material.EnableKeyword("_MASKMAP");
+
+        for (int i = 0; i < 4; i++)
+        {
+            var layer = TerrainData.terrainLayers[i];
+            Material2.SetTexture("_Splat" + i, layer.diffuseTexture);
+            Material2.SetTextureOffset("_Splat" + i, layer.tileOffset);
+            Material2.SetTextureScale("_Splat" + i, (Vector2.one * 2048.0f) / layer.tileSize);
+            Material2.SetTexture("_Normal" + i, layer.normalMapTexture);
+            Material2.SetTexture("_Mask" + i, layer.maskMapTexture);
+            Material2.SetVector("_DiffuseRemapScale"+i, layer.diffuseRemapMax);
+            Material2.SetVector("_MaskMapRemapOffset"+i, layer.maskMapRemapMin);
+            Material2.SetVector("_MaskMapRemapScale"+i, layer.maskMapRemapMax);            
+            Material2.SetFloat("_Metallic"+i, layer.metallic);
+            Material2.SetFloat("_Smoothness"+i, layer.smoothness);
+            Material2.SetFloat("_NormalScale"+i, layer.normalScale);
+            Material2.SetFloat("_LayerHasMask" + i, layer.maskMapTexture == null ? 0 : 1);
+        }
+        Material2.SetTexture("_Control", TerrainData.alphamapTextures[0]);
+        Material2.SetTexture("_TerrainNormalmapTexture", NormalMap);
+        Material2.EnableKeyword("_NORMALMAP");
+        Material2.EnableKeyword("_MASKMAP");
+        #endregion
         #region create mesh
         TILE_RESOLUTION = 1 << TreeData.endLevel;
         PATCH_VERT_RESOLUTION = TILE_RESOLUTION + 1;
@@ -160,6 +205,7 @@ public class TerrainRender : MonoBehaviour
         Material2.SetInt("_LerpRange", TreeData.lodRange);
         
         var t = Camera.main.transform.position;
+        //保证Editor的预览
         Shader.SetGlobalVector("_CameraPosition", t);
         _quadTree.Select(Camera.main);
         VtPageTable.ActiveNodes(_quadTree.FinalPatch1, false);
@@ -185,6 +231,8 @@ public class TerrainRender : MonoBehaviour
         //         new Vector3(scale, patch.minmax.y - patch.minmax.x, scale));
         //     matrixs.Add(mat);
         // }
+        //
+        // Graphics.DrawMesh(_boundMesh, matrixs[0], Material, 0);
         // Graphics.DrawMeshInstanced(_boundMesh, 0, _boundMaterial, matrixs);
         //
         // matrixs.Clear();
