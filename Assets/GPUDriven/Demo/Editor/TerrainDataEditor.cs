@@ -13,6 +13,7 @@ public class TerrainDataEditor : EditorWindow
     public const string EXPORT_ROOT = "Assets/ClipmapExport";
     public const string DATA_PATH = EXPORT_ROOT + "/Data";
     public const string HEIGHT_PATH = EXPORT_ROOT + "/HeightMap";
+    public const string TERRAIN_PATH = EXPORT_ROOT + "/Terrain";
     public const string NORMAL_PATH = EXPORT_ROOT + "/NormalMap";
     public const string HEIGHT_GO_PATH = EXPORT_ROOT + "/HeightMapPrefab";
     public const string CONFIG_NAME = "quad_tree_config.asset";
@@ -34,6 +35,7 @@ public class TerrainDataEditor : EditorWindow
     private Shader shader;
     private bool genHeightPrefab = false;
     private Texture2D HeightBoundTexture;
+
     private void Awake()
     {
         if (null == treeData)
@@ -141,6 +143,10 @@ public class TerrainDataEditor : EditorWindow
             if (!Directory.Exists(NORMAL_PATH))
             {
                 Directory.CreateDirectory(NORMAL_PATH);
+            }   
+            if (!Directory.Exists(TERRAIN_PATH))
+            {
+                Directory.CreateDirectory(TERRAIN_PATH);
             }
 
             if (null == shader)
@@ -202,9 +208,9 @@ public class TerrainDataEditor : EditorWindow
                 int xcount = 1 << xc;
                 int zcount = 1 << zc;
 
-                ExportNormalMap(terrain, "normal_" + terrain.name);
-                ExportQuadTreeHeightMap(terrain, terrain.terrainData.heightmapResolution - 1, 0, 0,
-                    0, 0, "height_" + terrain.name, Vector3.zero, new Vector3Int(-1, -1, -1));
+                // ExportNormalMap(terrain, "normal_" + terrain.name);
+                // ExportQuadTreeHeightMap(terrain, terrain.terrainData.heightmapResolution - 1, 0, 0,
+                //     0, 0, "height_" + terrain.name, Vector3.zero, new Vector3Int(-1, -1, -1));
                 HeightBoundTexture = new Texture2D(1 << (boundDepthX - data.heightMapLevel),
                     1 << (boundDepthZ - data.heightMapLevel), TextureFormat.RGB24, true, true);
                 int maxLod = heightQuadDepth; //最大lod
@@ -222,9 +228,10 @@ public class TerrainDataEditor : EditorWindow
                         levelConfigs.Add(qtl);
 
                         //分割
-                        ExportQuadTreeHeightMap(terrain, heightSize, i * (1 << xHeightMaxDepth) * heightSize,
+                        ExportQuadTerrain(terrain, heightSize, i * (1 << xHeightMaxDepth) * heightSize,
                             j * (1 << zHeightMaxDepth) * heightSize,
-                            xHeightMaxDepth, zHeightMaxDepth, qtl.heightMapRootPath, new Vector3(qtl.x, qtl.y, 1), new Vector3Int(i,j,maxLod));
+                            xHeightMaxDepth, zHeightMaxDepth, qtl.heightMapRootPath, new Vector3(qtl.x, qtl.y, 1),
+                            new Vector3Int(i, j, maxLod));
                     }
                 }
 
@@ -251,7 +258,7 @@ public class TerrainDataEditor : EditorWindow
                 HeightBoundTexture.Apply(false);
                 AssetDatabase.CreateAsset(HeightBoundTexture, HEIGHT_PATH + "/heightBounds.asset");
                 AssetDatabase.Refresh();
-                
+
                 data.mapLevel = new Vector2Int(boundDepthX, boundDepthZ);
             }
 
@@ -292,6 +299,145 @@ public class TerrainDataEditor : EditorWindow
         AssetDatabase.Refresh();
     }
 
+
+    void ExportQuadTerrain(Terrain terrain, int heightSize, int offsetX, int offsetZ, int skipDepthX,
+        int skipDepthZ, string key, Vector3 t, Vector3Int heightBoundsInfo)
+    {
+        var skipx = 1 << skipDepthX;
+        var skipz = 1 << skipDepthZ;
+        Texture2D texture2D = new Texture2D(heightSize + 1, heightSize + 1, TextureFormat.RHalf, false);
+        // int heightSize = 129;
+        float maxHeight = float.MinValue;
+        float minHeight = float.MaxValue;
+
+
+        var newData = new TerrainData();
+
+        //必须先创建（否则 贴图透明度纹[不知道叫啥] 理无法储存）
+
+        string path = TERRAIN_PATH + "/" + key + ".asset";
+
+        AssetDatabase.CreateAsset(newData, path);
+
+        //赋值一些基本属性
+        var mainData = terrain.terrainData;
+
+        newData.heightmapResolution = heightSize;
+
+        newData.alphamapResolution = heightSize * (mainData.alphamapResolution /
+                                                   (mainData.heightmapResolution - 1));
+
+        newData.baseMapResolution = heightSize * (mainData.baseMapResolution /
+                                                  (mainData.heightmapResolution - 1));
+
+        newData.size = new Vector3(heightSize * mainData.size.x /
+                                   (mainData.heightmapResolution - 1), mainData.size.y,
+            heightSize * mainData.size.z /
+            (mainData.heightmapResolution - 1));
+
+        //设置地形原型（原始贴图）
+
+        var splatProtos = mainData.splatPrototypes;
+
+        SplatPrototype[] newSplats = new SplatPrototype[splatProtos.Length];
+
+        for (int i = 0; i < splatProtos.Length; ++i)
+        {
+            newSplats[i] = new SplatPrototype();
+
+            newSplats[i].texture = splatProtos[i].texture;
+
+            newSplats[i].tileSize = splatProtos[i].tileSize;
+
+            newSplats[i].normalMap = splatProtos[i].normalMap;
+
+            //计算贴图偏移
+
+            // float offsetX = (newData.size.x * x) % splatProtos [i].tileSize.x + splatProtos [i].tileOffset.x;
+            //
+            // float offsetY = (newData.size.z * y) % splatProtos [i].tileSize.y + splatProtos [i].tileOffset.y;
+            //
+            // newSplats [i].tileOffset = new Vector2 (offsetX, offsetY);
+        }
+
+        newData.splatPrototypes = newSplats;
+
+        //赋值 高度 和 贴图透明度纹理 信息
+
+        // float[,,] alphamaps = mainData.GetAlphamaps (x * alphamapX, y * alphamapY, alphamapX, alphamapY);
+        //
+        // float[,] heights = mainData.GetHeights (x * heightX, y * heightY, heightX + 1, heightY + 1);//+1 防止边界高度为默认值0
+
+        // newData.SetAlphamaps (0, 0, alphamaps);
+
+        // newData.SetHeights (0, 0, heights);
+        var temps = mainData.GetAlphamaps(0, 0, 1, 1);
+        float[,] heights = new float[heightSize + 1, heightSize + 1];
+        float[,,] alphamaps = new float[newData.alphamapResolution, newData.alphamapResolution, temps.Length];
+        for (int i = 0; i <= heightSize; i++)
+        {
+            for (int j = 0; j <= heightSize; j++)
+            {
+                var x = offsetX + skipx * i;
+                var y = offsetZ + skipz * j;
+                var height = terrain.terrainData.GetHeight(x, y);
+                Debug.Log(height);
+                heights[i, j] = height;
+                if (i < newData.alphamapResolution && j < newData.alphamapResolution)
+                {
+                    temps = mainData.GetAlphamaps(x, y, 1, 1);
+                    for (int k = 0; k < temps.Length; k++)
+                    {
+                        alphamaps[i, j, k] = temps[0, 0, k];
+                    }
+                }
+            }
+        }
+
+        newData.SetAlphamaps(0, 0, alphamaps);
+        newData.SetHeights(0, 0, heights);
+
+        #region 生成gameObject
+
+        if (genHeightPrefab)
+        {
+            GameObject obj = new GameObject(key);
+            obj.transform.localPosition = new Vector3(t.x * mainData.size.x /
+                                                      (mainData.heightmapResolution - 1), 0, t.y * mainData.size.z /
+                (mainData.heightmapResolution - 1));
+            var _terrain = obj.AddComponent<Terrain>();
+            _terrain.materialTemplate = terrain.materialTemplate;
+            _terrain.terrainData = newData;
+            TerrainCollider terrainCollider = obj.AddComponent<TerrainCollider>();
+            terrainCollider.terrainData = newData;
+            //创建预制体
+            PrefabUtility.CreatePrefab(HEIGHT_GO_PATH + "/" + obj.name + ".prefab", obj);
+        }
+
+        #endregion
+
+
+        skipDepthX--;
+        skipDepthZ--;
+        if (skipDepthX < 0 || skipDepthZ < 0)
+            return;
+
+        int offsetAddX = heightSize * (1 << skipDepthX);
+        int offsetAddZ = heightSize * (1 << skipDepthZ);
+        // ExportQuadTerrain(terrain, heightSize, offsetX, offsetZ + offsetAddZ, skipDepthX, skipDepthZ, key + "01",
+        //     new Vector3(t.x, t.y + offsetAddZ, t.z / 2.0f),
+        //     new Vector3Int(heightBoundsInfo.x * 2, heightBoundsInfo.y * 2 + 1, heightBoundsInfo.z - 1));
+        // ExportQuadTerrain(terrain, heightSize, offsetX + offsetAddX, offsetZ + offsetAddZ, skipDepthX, skipDepthZ,
+        //     key + "11", new Vector3(t.x + offsetAddX, t.y + offsetAddZ, t.z / 2.0f),
+        //     new Vector3Int(heightBoundsInfo.x * 2 + 1, heightBoundsInfo.y * 2 + 1, heightBoundsInfo.z - 1));
+        // ExportQuadTerrain(terrain, heightSize, offsetX, offsetZ, skipDepthX, skipDepthZ, key + "00",
+        //     new Vector3(t.x, t.y, t.z / 2.0f),
+        //     new Vector3Int(heightBoundsInfo.x * 2, heightBoundsInfo.y * 2, heightBoundsInfo.z - 1));
+        // ExportQuadTerrain(terrain, heightSize, offsetX + offsetAddX, offsetZ, skipDepthX, skipDepthZ, key + "10",
+        //     new Vector3(t.x + offsetAddX, t.y, t.z / 2.0f),
+        //     new Vector3Int(heightBoundsInfo.x * 2 + 1, heightBoundsInfo.y * 2, heightBoundsInfo.z - 1));
+    }
+
     void ExportQuadTreeHeightMap(Terrain terrain, int heightSize, int offsetX, int offsetZ, int skipDepthX,
         int skipDepthZ, string key, Vector3 t, Vector3Int heightBoundsInfo)
     {
@@ -322,7 +468,8 @@ public class TerrainDataEditor : EditorWindow
 
         if (heightBoundsInfo.z >= 0)
         {
-            Debug.Log(heightBoundsInfo.z +":"+ heightBoundsInfo.x +", "+heightBoundsInfo.y + " :(" +minHeight * 500+ "," +maxHeight * 500 +")");
+            Debug.Log(heightBoundsInfo.z + ":" + heightBoundsInfo.x + ", " + heightBoundsInfo.y + " :(" +
+                      minHeight * 500 + "," + maxHeight * 500 + ")");
             HeightBoundTexture.SetPixel(heightBoundsInfo.x, heightBoundsInfo.y, new Color(minHeight, maxHeight, 0, 0),
                 heightBoundsInfo.z);
         }
@@ -364,13 +511,17 @@ public class TerrainDataEditor : EditorWindow
         int offsetAddX = heightSize * (1 << skipDepthX);
         int offsetAddZ = heightSize * (1 << skipDepthZ);
         ExportQuadTreeHeightMap(terrain, heightSize, offsetX, offsetZ + offsetAddZ, skipDepthX, skipDepthZ, key + "01",
-            new Vector3(t.x, t.y + offsetAddZ, t.z / 2.0f), new Vector3Int(heightBoundsInfo.x * 2, heightBoundsInfo.y * 2 + 1, heightBoundsInfo.z - 1));
+            new Vector3(t.x, t.y + offsetAddZ, t.z / 2.0f),
+            new Vector3Int(heightBoundsInfo.x * 2, heightBoundsInfo.y * 2 + 1, heightBoundsInfo.z - 1));
         ExportQuadTreeHeightMap(terrain, heightSize, offsetX + offsetAddX, offsetZ + offsetAddZ, skipDepthX, skipDepthZ,
-            key + "11", new Vector3(t.x + offsetAddX, t.y + offsetAddZ, t.z / 2.0f), new Vector3Int(heightBoundsInfo.x * 2 + 1, heightBoundsInfo.y * 2 + 1, heightBoundsInfo.z - 1));
+            key + "11", new Vector3(t.x + offsetAddX, t.y + offsetAddZ, t.z / 2.0f),
+            new Vector3Int(heightBoundsInfo.x * 2 + 1, heightBoundsInfo.y * 2 + 1, heightBoundsInfo.z - 1));
         ExportQuadTreeHeightMap(terrain, heightSize, offsetX, offsetZ, skipDepthX, skipDepthZ, key + "00",
-            new Vector3(t.x, t.y, t.z / 2.0f), new Vector3Int(heightBoundsInfo.x * 2, heightBoundsInfo.y * 2, heightBoundsInfo.z - 1));
+            new Vector3(t.x, t.y, t.z / 2.0f),
+            new Vector3Int(heightBoundsInfo.x * 2, heightBoundsInfo.y * 2, heightBoundsInfo.z - 1));
         ExportQuadTreeHeightMap(terrain, heightSize, offsetX + offsetAddX, offsetZ, skipDepthX, skipDepthZ, key + "10",
-            new Vector3(t.x + offsetAddX, t.y, t.z / 2.0f), new Vector3Int(heightBoundsInfo.x * 2 + 1, heightBoundsInfo.y * 2, heightBoundsInfo.z - 1));
+            new Vector3(t.x + offsetAddX, t.y, t.z / 2.0f),
+            new Vector3Int(heightBoundsInfo.x * 2 + 1, heightBoundsInfo.y * 2, heightBoundsInfo.z - 1));
     }
 
     void ExportTexture(Texture t, int W, int H, Vector2Int scale, GraphicsFormat format)
