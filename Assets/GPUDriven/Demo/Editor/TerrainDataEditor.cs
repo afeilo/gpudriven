@@ -13,6 +13,7 @@ public class TerrainDataEditor : EditorWindow
     public const string EXPORT_ROOT = "Assets/ClipmapExport";
     public const string DATA_PATH = EXPORT_ROOT + "/Data";
     public const string HEIGHT_PATH = EXPORT_ROOT + "/HeightMap";
+    public const string SPLAT_PATH = EXPORT_ROOT + "/SplatMap";
     public const string TERRAIN_PATH = EXPORT_ROOT + "/Terrain";
     public const string NORMAL_PATH = EXPORT_ROOT + "/NormalMap";
     public const string HEIGHT_GO_PATH = EXPORT_ROOT + "/HeightMapPrefab";
@@ -143,10 +144,16 @@ public class TerrainDataEditor : EditorWindow
             if (!Directory.Exists(NORMAL_PATH))
             {
                 Directory.CreateDirectory(NORMAL_PATH);
-            }   
+            }
+
             if (!Directory.Exists(TERRAIN_PATH))
             {
                 Directory.CreateDirectory(TERRAIN_PATH);
+            }
+
+            if (!Directory.Exists(SPLAT_PATH))
+            {
+                Directory.CreateDirectory(SPLAT_PATH);
             }
 
             if (null == shader)
@@ -221,17 +228,24 @@ public class TerrainDataEditor : EditorWindow
                         var qtl = new QuadTreeData.QuadTreeLevelConfig();
                         var cx = (int) pos.x + i * topSize;
                         var cy = (int) pos.z + j * topSize;
-                        qtl.x = cx + topSize / 2; //中心点
+                        qtl.x = cx + topSize / 2; //中心点  
                         qtl.y = cy + topSize / 2;
-                        qtl.heightMapRootPath = "height" + levelConfigs.Count;
+                        qtl.heightMapRootPath = "heightmap_" + levelConfigs.Count;
+                        qtl.splatMapRootPath = "splatmap0_" + levelConfigs.Count;
+                        if (terrain.terrainData.alphamapTextureCount > 1)
+                            qtl.splatAddMapRootPath = "splatmap1_" + levelConfigs.Count;
+                        else
+                            qtl.splatAddMapRootPath = null;
+                        qtl.normalMapRootPath = "normalmap_" + levelConfigs.Count;
                         qtl.heightMapDepthLevel = heightQuadDepth;
-                        levelConfigs.Add(qtl);
 
                         //分割
                         ExportQuadTerrain(terrain, heightSize, i * (1 << xHeightMaxDepth) * heightSize,
                             j * (1 << zHeightMaxDepth) * heightSize,
-                            xHeightMaxDepth, zHeightMaxDepth, qtl.heightMapRootPath, new Vector3(qtl.x, qtl.y, 1),
+                            xHeightMaxDepth, zHeightMaxDepth, levelConfigs.Count.ToString(),
+                            new Vector3(qtl.x, qtl.y, 1),
                             new Vector3Int(i, j, maxLod));
+                        levelConfigs.Add(qtl);
                     }
                 }
 
@@ -272,27 +286,19 @@ public class TerrainDataEditor : EditorWindow
         GUILayout.EndVertical();
     }
 
-    void ExportNormalMap(Terrain terrain, string key)
+    void ExportNormalMap(TerrainData terrainData, string key)
     {
-        var _renderTex = terrain.normalmapTexture;
-        Debug.Log(_renderTex.format);
-        int width = _renderTex.width;
-        int height = _renderTex.height;
-
-        Texture2D rt2d = new Texture2D(width, height, TextureFormat.RGB24, false);
-        for (int w = 0; w < width; w++)
+        Texture2D rt2d = new Texture2D(terrainData.heightmapResolution, terrainData.heightmapResolution,
+            TextureFormat.RGB24, false, true);
+        for (int w = 0; w < rt2d.width; w++)
         {
-            for (int h = 0; h < height; h++)
+            for (int h = 0; h < rt2d.height; h++)
             {
-                var _normal = terrain.terrainData.GetInterpolatedNormal(w / (float) width, h / (float) height)
+                var _normal = terrainData.GetInterpolatedNormal(w / (float) rt2d.width, h / (float) rt2d.height)
                     .normalized;
                 rt2d.SetPixel(w, h, new Color((_normal.x + 1) / 2.0f, (_normal.y + 1) / 2.0f, (_normal.z + 1) / 2.0f));
             }
         }
-
-        // RenderTexture.active = _renderTex;
-        // rt2d.ReadPixels(new Rect(0, 0, width, height), 0, 0);
-        // rt2d.Apply();
 
         string path = NORMAL_PATH + "/" + key + ".asset";
         AssetDatabase.CreateAsset(rt2d, path);
@@ -305,7 +311,6 @@ public class TerrainDataEditor : EditorWindow
     {
         var skipx = 1 << skipDepthX;
         var skipz = 1 << skipDepthZ;
-        Texture2D texture2D = new Texture2D(heightSize + 1, heightSize + 1, TextureFormat.RHalf, false);
         // int heightSize = 129;
         float maxHeight = float.MinValue;
         float minHeight = float.MaxValue;
@@ -364,13 +369,20 @@ public class TerrainDataEditor : EditorWindow
 
         //赋值 高度 和 贴图透明度纹理 信息
 
-        // float[,,] alphamaps = mainData.GetAlphamaps (x * alphamapX, y * alphamapY, alphamapX, alphamapY);
+        // float[,,] alphamaps = mainData.GetAlphamaps (0, 0, heightSize, heightSize);
         //
-        // float[,] heights = mainData.GetHeights (x * heightX, y * heightY, heightX + 1, heightY + 1);//+1 防止边界高度为默认值0
-
+        // float[,] heights = mainData.GetHeights (0, 0, heightSize + 1, heightSize + 1);//+1 防止边界高度为默认值0
+        //
         // newData.SetAlphamaps (0, 0, alphamaps);
-
+        //
         // newData.SetHeights (0, 0, heights);
+
+
+        float[,,] tempAlphamaps = mainData.GetAlphamaps(0, 0, mainData.alphamapWidth, mainData.alphamapHeight);
+
+        float[,] tempHeights =
+            mainData.GetHeights(0, 0, mainData.heightmapResolution, mainData.heightmapResolution); //+1 防止边界高度为默认值0
+
         var temps = mainData.GetAlphamaps(0, 0, 1, 1);
         float[,] heights = new float[heightSize + 1, heightSize + 1];
         float[,,] alphamaps = new float[newData.alphamapResolution, newData.alphamapResolution, temps.Length];
@@ -380,39 +392,116 @@ public class TerrainDataEditor : EditorWindow
             {
                 var x = offsetX + skipx * i;
                 var y = offsetZ + skipz * j;
-                var height = terrain.terrainData.GetHeight(x, y);
-                Debug.Log(height);
+                var height = tempHeights[x, y]; //terrain.terrainData.GetHeight(x, y);
+                // Debug.Log(height);
                 heights[i, j] = height;
                 if (i < newData.alphamapResolution && j < newData.alphamapResolution)
                 {
-                    temps = mainData.GetAlphamaps(x, y, 1, 1);
+                    // temps = mainData.GetAlphamaps(x, y, 1, 1);
                     for (int k = 0; k < temps.Length; k++)
                     {
-                        alphamaps[i, j, k] = temps[0, 0, k];
+                        alphamaps[i, j, k] = tempAlphamaps[x, y, k];
                     }
                 }
+
+
+                maxHeight = height > maxHeight ? height : maxHeight;
+                minHeight = height < minHeight ? height : minHeight;
             }
         }
+
 
         newData.SetAlphamaps(0, 0, alphamaps);
         newData.SetHeights(0, 0, heights);
 
+
+        if (heightBoundsInfo.z >= 0)
+        {
+            Debug.Log(minHeight + "," + maxHeight);
+            HeightBoundTexture.SetPixel(heightBoundsInfo.x, heightBoundsInfo.y,
+                new Color(minHeight,
+                    maxHeight, 0, 0),
+                heightBoundsInfo.z);
+        }
+
+        #region export splatmap
+
+        for (var i = 0; i < newData.alphamapTextureCount; i++)
+        {
+            Texture2D tex = newData.alphamapTextures[i];
+            byte[] bytes;
+            bytes = tex.EncodeToTGA();
+            string filename = "splatmap" + i + "_" + key;
+            File.WriteAllBytes($"{SPLAT_PATH}/{filename}.tga", bytes);
+        }
+
+        #endregion
+
+        #region export heightmap
+
+        {
+            RenderTexture oldRT = RenderTexture.active;
+            int width = newData.heightmapTexture.width;
+            int height = newData.heightmapTexture.height;
+            var texture = new Texture2D(width, height, newData.heightmapTexture.graphicsFormat,
+                TextureCreationFlags.None);
+            RenderTexture.active = newData.heightmapTexture;
+            texture.ReadPixels(new Rect(0, 0, width, height), 0, 0);
+
+            texture.Apply();
+            // byte[] bytes;
+            // bytes = texture.EncodeToTGA();
+
+            path = HEIGHT_PATH + "/heightmap_" + key + ".asset";
+            // File.WriteAllBytes(path, bytes);
+            // RenderTexture.active = oldRT;
+            
+            AssetDatabase.CreateAsset(texture, path);
+        }
+
+        #endregion
+
+
+        #region export normalmap
+
+        ExportNormalMap(newData, "normalmap_" + key);
+        // RenderTexture normalMapRT = newTerrain.normalmapTexture;
+        //
+        // Texture2D newTexture = new Texture2D(normalMapRT.width, normalMapRT.height, TextureFormat.ARGB32, false);
+        //
+        // RenderTexture.active = normalMapRT;
+        // newTexture.ReadPixels(new Rect(0, 0, normalMapRT.width, normalMapRT.height), 0, 0, false);
+        // newTexture.Apply();
+        //
+        // System.IO.File.WriteAllBytes(NORMAL_PATH + "/normalmap_" + key + ".tga", newTexture.EncodeToTGA());
+        //
+        // DestroyImmediate(newTexture);
+
+        #endregion
+
         #region 生成gameObject
+
+        #region gen gameobject
+
+        GameObject obj = new GameObject(key);
+        obj.transform.localPosition = new Vector3(t.x * mainData.size.x /
+                                                  (mainData.heightmapResolution - 1), 0, t.y * mainData.size.z /
+            (mainData.heightmapResolution - 1));
+        var newTerrain = obj.AddComponent<Terrain>();
+        newTerrain.materialTemplate = terrain.materialTemplate;
+        newTerrain.terrainData = newData;
+        TerrainCollider terrainCollider = obj.AddComponent<TerrainCollider>();
+        terrainCollider.terrainData = newData;
+
+        #endregion
 
         if (genHeightPrefab)
         {
-            GameObject obj = new GameObject(key);
-            obj.transform.localPosition = new Vector3(t.x * mainData.size.x /
-                                                      (mainData.heightmapResolution - 1), 0, t.y * mainData.size.z /
-                (mainData.heightmapResolution - 1));
-            var _terrain = obj.AddComponent<Terrain>();
-            _terrain.materialTemplate = terrain.materialTemplate;
-            _terrain.terrainData = newData;
-            TerrainCollider terrainCollider = obj.AddComponent<TerrainCollider>();
-            terrainCollider.terrainData = newData;
             //创建预制体
             PrefabUtility.CreatePrefab(HEIGHT_GO_PATH + "/" + obj.name + ".prefab", obj);
         }
+
+        DestroyImmediate(obj);
 
         #endregion
 
@@ -424,18 +513,62 @@ public class TerrainDataEditor : EditorWindow
 
         int offsetAddX = heightSize * (1 << skipDepthX);
         int offsetAddZ = heightSize * (1 << skipDepthZ);
-        // ExportQuadTerrain(terrain, heightSize, offsetX, offsetZ + offsetAddZ, skipDepthX, skipDepthZ, key + "01",
-        //     new Vector3(t.x, t.y + offsetAddZ, t.z / 2.0f),
-        //     new Vector3Int(heightBoundsInfo.x * 2, heightBoundsInfo.y * 2 + 1, heightBoundsInfo.z - 1));
-        // ExportQuadTerrain(terrain, heightSize, offsetX + offsetAddX, offsetZ + offsetAddZ, skipDepthX, skipDepthZ,
-        //     key + "11", new Vector3(t.x + offsetAddX, t.y + offsetAddZ, t.z / 2.0f),
-        //     new Vector3Int(heightBoundsInfo.x * 2 + 1, heightBoundsInfo.y * 2 + 1, heightBoundsInfo.z - 1));
-        // ExportQuadTerrain(terrain, heightSize, offsetX, offsetZ, skipDepthX, skipDepthZ, key + "00",
-        //     new Vector3(t.x, t.y, t.z / 2.0f),
-        //     new Vector3Int(heightBoundsInfo.x * 2, heightBoundsInfo.y * 2, heightBoundsInfo.z - 1));
-        // ExportQuadTerrain(terrain, heightSize, offsetX + offsetAddX, offsetZ, skipDepthX, skipDepthZ, key + "10",
-        //     new Vector3(t.x + offsetAddX, t.y, t.z / 2.0f),
-        //     new Vector3Int(heightBoundsInfo.x * 2 + 1, heightBoundsInfo.y * 2, heightBoundsInfo.z - 1));
+        ExportQuadTerrain(terrain, heightSize, offsetX + offsetAddX, offsetZ, skipDepthX, skipDepthZ, key + "01",
+            new Vector3(t.x, t.y + offsetAddZ, t.z / 2.0f),
+            new Vector3Int(heightBoundsInfo.x * 2, heightBoundsInfo.y * 2 + 1, heightBoundsInfo.z - 1));
+        ExportQuadTerrain(terrain, heightSize, offsetX + offsetAddX, offsetZ + offsetAddZ, skipDepthX, skipDepthZ,
+            key + "11", new Vector3(t.x + offsetAddX, t.y + offsetAddZ, t.z / 2.0f),
+            new Vector3Int(heightBoundsInfo.x * 2 + 1, heightBoundsInfo.y * 2 + 1, heightBoundsInfo.z - 1));
+        ExportQuadTerrain(terrain, heightSize, offsetX, offsetZ, skipDepthX, skipDepthZ, key + "00",
+            new Vector3(t.x, t.y, t.z / 2.0f),
+            new Vector3Int(heightBoundsInfo.x * 2, heightBoundsInfo.y * 2, heightBoundsInfo.z - 1));
+        ExportQuadTerrain(terrain, heightSize, offsetX, offsetZ + offsetAddZ, skipDepthX, skipDepthZ, key + "10",
+            new Vector3(t.x + offsetAddX, t.y, t.z / 2.0f),
+            new Vector3Int(heightBoundsInfo.x * 2 + 1, heightBoundsInfo.y * 2, heightBoundsInfo.z - 1));
+    }
+
+
+    public static void ExportTerrainHeightsToTexture(TerrainData terrainData, string path)
+    {
+        RenderTexture oldRT = RenderTexture.active;
+        int width = terrainData.heightmapTexture.width - 1;
+        int height = terrainData.heightmapTexture.height - 1;
+        var texture = new Texture2D(width, height, terrainData.heightmapTexture.graphicsFormat,
+            TextureCreationFlags.None);
+        RenderTexture.active = terrainData.heightmapTexture;
+        texture.ReadPixels(new Rect(0, 0, width, height), 0, 0);
+
+        //Remap Texture
+        // Color[] pixels = texture.GetPixels();
+        // for (int i = 0; i < pixels.Length; i += 4)
+        // {
+        //     pixels[i].r = (pixels[i].r * 2) * (inputLevelsRange.y - inputLevelsRange.x) + inputLevelsRange.x;
+        //     pixels[i + 1].r = (pixels[i + 1].r * 2) * (inputLevelsRange.y - inputLevelsRange.x) + inputLevelsRange.x;
+        //     pixels[i + 2].r = (pixels[i + 2].r * 2) * (inputLevelsRange.y - inputLevelsRange.x) + inputLevelsRange.x;
+        //     pixels[i + 3].r = (pixels[i + 3].r * 2) * (inputLevelsRange.y - inputLevelsRange.x) + inputLevelsRange.x;
+        // }
+        // texture.SetPixels(pixels);
+        texture.Apply();
+
+        //Flip Texture
+        // if (flipVertical)
+        //     ToolboxHelper.FlipTexture(texture, true);
+
+        byte[] bytes;
+        // switch (format)
+        // {
+        //     case Heightmap.Format.TGA:
+        bytes = texture.EncodeToTGA();
+        path = path + ".tga";
+        // break;
+        //     default:
+        //         bytes = texture.EncodeToPNG();
+        //         path = path + ".png";
+        //         break;
+        // }
+
+        File.WriteAllBytes(path, bytes);
+        RenderTexture.active = oldRT;
     }
 
     void ExportQuadTreeHeightMap(Terrain terrain, int heightSize, int offsetX, int offsetZ, int skipDepthX,

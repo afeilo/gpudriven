@@ -46,6 +46,7 @@ struct Varyings
 #if defined(DYNAMICLIGHTMAP_ON)
     float2 dynamicLightmapUV        : TEXCOORD9;
 #endif
+    float2 splatUV        : TEXCOORD10;
 
     float4 clipPos                  : SV_POSITION;
     UNITY_VERTEX_OUTPUT_STEREO
@@ -239,8 +240,9 @@ Varyings SplatmapVert(Attributes v, uint instanceID : SV_InstanceID)
 
     UNITY_SETUP_INSTANCE_ID(v);
     UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
-    TerrainInstancing(v.positionOS, v.normalOS, v.texcoord, instanceID);
-
+    
+    o.splatUV = TerrainInstancing(v.positionOS, v.normalOS, v.texcoord, instanceID);
+    
     VertexPositionInputs Attributes = GetVertexPositionInputs(v.positionOS.xyz);
 
     o.uvMainAndLM.xy = v.texcoord;
@@ -341,9 +343,8 @@ half4 SplatmapFragment(Varyings IN) : SV_TARGET
     half4 masks[4];
     ComputeMasks(masks, hasMask, IN);
 
-    float2 splatUV = (IN.uvMainAndLM.xy * (_Control_TexelSize.zw - 1.0f) + 0.5f) * _Control_TexelSize.xy;
-    half4 splatControl = SAMPLE_TEXTURE2D(_Control, sampler_Control, splatUV);
-
+    float2 splatUV = IN.splatUV.xy;
+    half4 splatControl = SAMPLE_TEXTURE2D(_VTSplatTiledTex, sampler_VTSplatTiledTex, splatUV);
     half alpha = dot(splatControl, 1.0h);
 #ifdef _TERRAIN_BLEND_HEIGHT
     // disable Height Based blend when there are more than 4 layers (multi-pass breaks the normalization)
@@ -414,10 +415,8 @@ half4 SplatmapFragment(Varyings IN) : SV_TARGET
     return BRDFDataToGbuffer(brdfData, inputData, smoothness, color.rgb, occlusion);
 
 #else
-
     half4 color = UniversalFragmentPBR(inputData, albedo, metallic, /* specular */ half3(0.0h, 0.0h, 0.0h), smoothness, occlusion, /* emission */ half3(0, 0, 0), alpha);
     SplatmapFinalColor(color, inputData.fogCoord);
-
     return half4(color.rgb, 1.0h);
 #endif
 }

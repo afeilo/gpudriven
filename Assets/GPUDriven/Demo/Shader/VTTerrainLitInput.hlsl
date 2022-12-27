@@ -117,9 +117,16 @@ inline void InitializeStandardLitSurfaceData(float2 uv, out SurfaceData outSurfa
 
 
 
-Texture2D _VTTiledTex;
+Texture2D _VTHeightTiledTex;
+Texture2D _VTNormaltTiledTex;
 Texture2D _LookupTex;
+float4 _VTSplatTiledTex_TexelSize;
 float4 _LookupParam;
+float _HeightTileSize;
+float _SplatTileSize;
+
+TEXTURE2D(_VTSplatTiledTex); 
+SAMPLER( sampler_VTSplatTiledTex);
 
 StructuredBuffer<RenderPatch> PatchList;
 
@@ -150,7 +157,7 @@ half revertLerp(half min, half max, half value)
     // return 0.5f;
 }
 
-void TerrainInstancing(inout float4 positionOS, inout float3 normal, inout float2 texcoord, uint instanceID : SV_InstanceID)
+float2 TerrainInstancing(inout float4 positionOS, inout float3 normal, inout float2 texcoord, uint instanceID : SV_InstanceID)
 {
     RenderPatch p = PatchList[instanceID];
     float4 vertex = positionOS;
@@ -168,19 +175,29 @@ void TerrainInstancing(inout float4 positionOS, inout float3 normal, inout float
     float4 node_os = _LookupTex.Load(int3(floor(p.position.xy / _LookupParam.w), 0));
     int pageX = floor(node_os.w / _LookupParam.x);
     int pageZ = floor(node_os.w % _LookupParam.x);
-    int tileSize = _LookupParam.y - 1;
+    int tileSize = _HeightTileSize - 1;
     int scaleTileSize = (tileSize * node_os.z);
     // vertex.xz -= fracPart * morphLerpK;
     float2 uv = texcoord - frac(texcoord * _UVResolution * 0.5) * morphLerpK / _UVResolution * 2;
-    float pageOffsetX = pageX * _LookupParam.z + tileSize * node_os.x + scaleTileSize * uv.x;
-    float pageOffsetZ = pageZ * _LookupParam.z + tileSize * node_os.y + scaleTileSize * uv.y;
-    float height = _VTTiledTex.Load(int3(pageOffsetX, pageOffsetZ, 0));
-    vertex.y = height * 500;
+    float heightPageOffsetX = pageX * (_HeightTileSize + _LookupParam.z) + tileSize * node_os.x + scaleTileSize * uv.x;
+    float heightPageOffsetZ = pageZ * (_HeightTileSize + _LookupParam.z) + tileSize * node_os.y + scaleTileSize * uv.y;
+    float height = UnpackHeightmap(_VTHeightTiledTex.Load(int3(heightPageOffsetX, heightPageOffsetZ, 0)));
+    // float height = UnpackHeightmap(_TerrainHeightmapTexture.Load(int3(sampleCoords, 0)));
+    // positionOS.xz = sampleCoords * _TerrainHeightmapScale.xz;
+    // positionOS.y = height * _TerrainHeightmapScale.y;
+    vertex.y = height * 1000;
     
     positionOS.xyz = vertex.xyz;
-    texcoord = vertex.xz / 2048;
-    normal = _TerrainNormalmapTexture.Load(int3(vertex.xz, 0)).rgb * 2 - 1;
-    
+    texcoord.xy = vertex.xz / 2048;
+    normal = _VTNormaltTiledTex.Load(int3(heightPageOffsetX, heightPageOffsetZ, 0)).rgb * 2 - 1;
+
+    float2 splatUV = (tileSize * node_os + scaleTileSize * uv) / _SplatTileSize;
+    splatUV = splatUV * (_SplatTileSize - 1.0) + 0.5f;
+    float splatUVOffsetX = pageX * (_SplatTileSize + _LookupParam.z);;
+    float splatUVOffsetZ = pageZ * (_SplatTileSize + _LookupParam.z);
+    splatUV += float2(splatUVOffsetX, splatUVOffsetZ);
+    splatUV *= _VTSplatTiledTex_TexelSize.xy;
+    return splatUV;
 }
 
 

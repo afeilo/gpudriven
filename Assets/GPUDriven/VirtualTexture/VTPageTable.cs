@@ -29,30 +29,73 @@ public class VTPageTable : MonoBehaviour
     /// <summary>
     /// Tile尺寸
     /// </summary>
-    public int mTileSize;
+    public int mHeightTileSize;
+    public int mSplatTileSize;
+    public int mNormalTileSize;
 
     public Shader mDrawTextureShader;
 
     /// <summary>
     /// 加上padding的总长度
     /// </summary>
-    public int TileSizeWithPadding
+    public int HeightTileSizeWithPadding
     {
-        get { return mTileSize + m_TilePadding; }
+        get { return mHeightTileSize + m_TilePadding; }
     }
 
     /// <summary>
     /// 页面长宽
     /// </summary>
-    public int PageSize
+    public int HeightPageSize
     {
-        get { return m_RegionSize * TileSizeWithPadding; }
+        get { return m_RegionSize * HeightTileSizeWithPadding; }
     }
 
     /// <summary>
     /// 平铺贴图对象
     /// </summary>
-    public RenderTexture mTileTexture;
+    public RenderTexture mHeightTileTexture;
+    
+    /// <summary>
+    /// 加上padding的总长度
+    /// </summary>
+    public int SplatTileSizeWithPadding
+    {
+        get { return mSplatTileSize + m_TilePadding; }
+    }
+
+    /// <summary>
+    /// 页面长宽
+    /// </summary>
+    public int SplatPageSize
+    {
+        get { return m_RegionSize * SplatTileSizeWithPadding; }
+    }
+
+    /// <summary>
+    /// 平铺贴图对象
+    /// </summary>
+    public RenderTexture mSplatTileTexture;
+    /// <summary>
+    /// 加上padding的总长度
+    /// </summary>
+    public int NormalTileSizeWithPadding
+    {
+        get { return mNormalTileSize + m_TilePadding; }
+    }
+
+    /// <summary>
+    /// 页面长宽
+    /// </summary>
+    public int NormalPageSize
+    {
+        get { return m_RegionSize * NormalTileSizeWithPadding; }
+    }
+
+    /// <summary>
+    /// 平铺贴图对象
+    /// </summary>
+    public RenderTexture mNormalTileTexture;
 
     /// <summary>
     /// LookUp table 大小由可视范围以及能够切分到多少个 格子绝对 比如说可视范围是4096*4096 单个cell能表现的最大范围是32*32 则lookuptable的大小为128 * 128
@@ -120,14 +163,28 @@ public class VTPageTable : MonoBehaviour
         _lruCache = new LruCache();
         _lruCache.Init(m_RegionSize);
 
-        mTileTexture = new RenderTexture(PageSize, PageSize, 0);
-        mTileTexture.format = RenderTextureFormat.R16;
-        mTileTexture.useMipMap = false;
-        mTileTexture.filterMode = FilterMode.Point;
-        mTileTexture.wrapMode = TextureWrapMode.Clamp;
+        mHeightTileTexture = new RenderTexture(HeightPageSize, HeightPageSize, 0);
+        mHeightTileTexture.format = RenderTextureFormat.R16;
+        mHeightTileTexture.useMipMap = false;
+        mHeightTileTexture.filterMode = FilterMode.Point;
+        mHeightTileTexture.wrapMode = TextureWrapMode.Clamp;
+        
+        mSplatTileTexture = new RenderTexture(SplatPageSize, SplatPageSize, 0);
+        mSplatTileTexture.format = RenderTextureFormat.ARGB32;
+        mSplatTileTexture.useMipMap = false;
+        mSplatTileTexture.filterMode = FilterMode.Bilinear;
+        mSplatTileTexture.wrapMode = TextureWrapMode.Clamp;
+        
+        mNormalTileTexture = new RenderTexture(NormalPageSize, NormalPageSize, 0);
+        mNormalTileTexture.format = RenderTextureFormat.RGB111110Float;
+        mNormalTileTexture.useMipMap = false;
+        mNormalTileTexture.filterMode = FilterMode.Point;
+        mNormalTileTexture.wrapMode = TextureWrapMode.Clamp;
 
 
-        Shader.SetGlobalTexture("_VTTiledTex", mTileTexture);
+        Shader.SetGlobalTexture("_VTHeightTiledTex", mHeightTileTexture);
+        Shader.SetGlobalTexture("_VTSplatTiledTex", mSplatTileTexture);
+        Shader.SetGlobalTexture("_VTNormaltTiledTex", mNormalTileTexture);
     }
 
     public void SetQuadTreeData(QuadTreeData config)
@@ -141,7 +198,10 @@ public class VTPageTable : MonoBehaviour
         
         mLookupTexture = new Texture2D(lengthX, lengthZ, TextureFormat.RGBAHalf, 0, true);
         Shader.SetGlobalTexture("_LookupTex", mLookupTexture);
-        Shader.SetGlobalVector("_LookupParam", new Vector4(m_RegionSize, mTileSize, TileSizeWithPadding, 1 << config.endLevel));
+        Shader.SetGlobalVector("_LookupParam", new Vector4(m_RegionSize, 0, m_TilePadding, 1 << config.endLevel));
+        Shader.SetGlobalFloat("_HeightTileSize", mHeightTileSize);
+        Shader.SetGlobalFloat("_SplatTileSize", mSplatTileSize);
+        Shader.SetGlobalFloat("_NormalTileSize ", mNormalTileSize);
     }
 
     public void ActiveNodes(RenderPatch[] patchs, bool isHalf)
@@ -183,14 +243,22 @@ public class VTPageTable : MonoBehaviour
         return _quadTreeData.GetLodHashCode(x, y, lod);
     }
 
-    private string GetPath(RenderPatch patch)
+    private string GetHeightMapPath(RenderPatch patch)
     {
         return _quadTreeData.GetHeightMapPath((int) patch.position.x, (int) patch.position.y, (int) patch.lod);
+    }
+    private string GetNormalMapPath(RenderPatch patch)
+    {
+        return _quadTreeData.GetNormalMapPath((int) patch.position.x, (int) patch.position.y, (int) patch.lod);
+    }
+    private string GetSplatMapPath(RenderPatch patch)
+    {
+        return _quadTreeData.GetSplatMapPath((int) patch.position.x, (int) patch.position.y, (int) patch.lod);
     }
     public async void ActiveNode(RenderPatch patch, bool isHalf)
     {
         int key = getHashCode(patch);
-        string path = GetPath(patch);
+        string path = GetHeightMapPath(patch);
         if (path == null)
         {
             return;
@@ -206,19 +274,31 @@ public class VTPageTable : MonoBehaviour
         }
 
         lruNode = _lruCache.SetActive(hashCode);
+        
+        string normalPath = GetNormalMapPath(patch);
+        string splatPath = GetSplatMapPath(patch);
+        
         //加载对应Node;
         var handle = Addressables.LoadAssetAsync<Texture2D>(path);
+        var handle1 = Addressables.LoadAssetAsync<Texture2D>(normalPath);
+        var handle2 = Addressables.LoadAssetAsync<Texture2D>(splatPath);
         await handle.Task;
+        await handle1.Task;
+        await handle2.Task;
         //烘焙对应Node；
-        var texture2d = handle.Result;
+        // var texture2d = handle.Result;
         lruNode = _lruCache.GetNode(hashCode);
         if (null == lruNode)
         {
             return;
         }
 
-        DrawTexture(texture2d, mTileTexture,
-            new RectInt(lruNode.x * TileSizeWithPadding, lruNode.y * TileSizeWithPadding, mTileSize, mTileSize));
+        DrawTexture(handle.Result, mHeightTileTexture,
+            new RectInt(lruNode.x * HeightTileSizeWithPadding, lruNode.y * HeightTileSizeWithPadding, mHeightTileSize, mHeightTileSize));        
+        DrawTexture(handle1.Result, mNormalTileTexture,
+            new RectInt(lruNode.x * NormalTileSizeWithPadding, lruNode.y * NormalTileSizeWithPadding, mHeightTileSize, mNormalTileSize));        
+        DrawTexture(handle2.Result, mSplatTileTexture,
+            new RectInt(lruNode.x * SplatTileSizeWithPadding, lruNode.y * SplatTileSizeWithPadding, mSplatTileSize, mSplatTileSize));
         Addressables.Release(handle);
     }
 
@@ -246,10 +326,10 @@ public class VTPageTable : MonoBehaviour
 
         var color = new Color(nodeOffsetScale.x, nodeOffsetScale.y, nodeOffsetScale.z,
             lruNode.x * m_RegionSize + lruNode.y);
-        var minPageSize = 1 << _quadTreeData.endLevel;
+        var minHeightPageSize = 1 << _quadTreeData.endLevel;
         var pageOffset = 1 << ((int) (isHalf ? lod - 1 : lod));
-        var startX = (int) (patch.position.x / minPageSize);
-        var startZ = (int) (patch.position.y / minPageSize);
+        var startX = (int) (patch.position.x / minHeightPageSize);
+        var startZ = (int) (patch.position.y / minHeightPageSize);
 
         DrawLookupTextureRect(startX, startX + pageOffset, startZ, startZ + pageOffset, color);
     }

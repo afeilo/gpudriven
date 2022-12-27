@@ -64,6 +64,18 @@ public class QuadTreeData : ScriptableObject
         /// 高度图位置
         /// </summary>
         public string heightMapRootPath;
+        /// <summary>
+        /// splatmap位置
+        /// </summary>
+        public string splatMapRootPath;        
+        /// <summary>
+        /// splatmapadd位置
+        /// </summary>
+        public string splatAddMapRootPath;
+        /// <summary>
+        /// 法线位置
+        /// </summary>
+        public string normalMapRootPath;
     }
 
 
@@ -135,6 +147,18 @@ public class QuadTreeData : ScriptableObject
         var key = GetHeightTreeCode(x, y, lod);
         var heightConfig = GetGeightConfig(x, y);
         return GetHeightMapPath(heightConfig.heightMapRootPath + key);
+    }
+    public string GetNormalMapPath(int x, int y, int lod)
+    {
+        var key = GetHeightTreeCode(x, y, lod);
+        var heightConfig = GetGeightConfig(x, y);
+        return GetNormalMapPath(heightConfig.normalMapRootPath + key);
+    }
+    public string GetSplatMapPath(int x, int y, int lod)
+    {
+        var key = GetHeightTreeCode(x, y, lod);
+        var heightConfig = GetGeightConfig(x, y);
+        return GetSplatMapPath(heightConfig.splatMapRootPath + key);
     }
 
     public QuadTreeLevelConfig GetGeightConfig(int x, int y)
@@ -219,6 +243,14 @@ public class QuadTreeData : ScriptableObject
     public static string GetHeightMapPath(string name)
     {
         return string.Format(@"Assets/ClipmapExport/HeightMap/{0}.asset", name);
+    }
+    public static string GetNormalMapPath(string name)
+    {
+        return string.Format(@"Assets/ClipmapExport/NormalMap/{0}.asset", name);
+    }
+    public static string GetSplatMapPath(string name)
+    {
+        return string.Format(@"Assets/ClipmapExport/SplatMap/{0}.tga", name);
     }
     
 }
