@@ -14,7 +14,8 @@ E --> F[间接绘制地形]
 ```
 
 
-https://user-images.githubusercontent.com/11472358/209794776-cdf45d98-bc2b-4ede-bc57-0cd8a0d96f91.mp4
+
+https://user-images.githubusercontent.com/11472358/209797578-69cf8faf-6edf-4326-8e9c-127c972888da.mp4
 
 
 
