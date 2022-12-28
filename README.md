@@ -12,3 +12,11 @@ C --> D[根据剔除结果加载资源]
 D --> E[blit到VirtualTexture上,并生成LookupTable]
 E --> F[间接绘制地形]
 ```
+
+
+https://user-images.githubusercontent.com/11472358/209794776-cdf45d98-bc2b-4ede-bc57-0cd8a0d96f91.mp4
+
+
+
+https://user-images.githubusercontent.com/11472358/209794788-596a183e-a961-42ee-88cc-d8114dcccb10.mp4
+
