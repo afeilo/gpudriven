@@ -127,6 +127,10 @@ float _SplatTileSize;
 
 TEXTURE2D(_VTSplatTiledTex); 
 SAMPLER( sampler_VTSplatTiledTex);
+TEXTURE2D(_VTBakeNormalTex); 
+SAMPLER( sampler_VTBakeNormalTex);
+TEXTURE2D(_VTBakeDiffuseTex); 
+SAMPLER( sampler_VTBakeDiffuseTex);
 
 StructuredBuffer<RenderPatch> PatchList;
 
@@ -201,6 +205,23 @@ float2 TerrainInstancing(inout float4 positionOS, inout float3 normal, inout flo
 }
 
 
+float2 CaclSplatUV(float2 uv, uint instanceID)
+{
+    RenderPatch p = PatchList[instanceID];
+    
+    float4 node_os = _LookupTex.Load(int3(floor(p.position.xy / _LookupParam.w), 0));
+    int pageX = floor(node_os.w / _LookupParam.x);
+    int pageZ = floor(node_os.w % _LookupParam.x);
+    int tileSize = _HeightTileSize - 1;
+    int scaleTileSize = (tileSize * node_os.z);
+    float2 splatUV = (tileSize * node_os + scaleTileSize * uv) / _SplatTileSize;
+    splatUV = splatUV * (_SplatTileSize - 1.0) + 0.5f;
+    float splatUVOffsetX = pageX * (_SplatTileSize + _LookupParam.z);;
+    float splatUVOffsetZ = pageZ * (_SplatTileSize + _LookupParam.z);
+    splatUV += float2(splatUVOffsetX, splatUVOffsetZ);
+    splatUV *= _VTSplatTiledTex_TexelSize.xy;
+    return splatUV;
+}
 
 void TerrainInstancing(inout float4 positionOS, inout float3 normal, inout float2 texcoord)
 {

@@ -34,9 +34,10 @@ public class VTPageTable : MonoBehaviour
     public int mNormalTileSize;
 
     public Shader mDrawTextureShader;
-
+    public Shader mBakeTerrainShader;
+    public TerrainData mTerrainData;
     /// <summary>
-    /// 加上padding的总长度
+    /// mHeightTileSize
     /// </summary>
     public int HeightTileSizeWithPadding
     {
@@ -71,11 +72,18 @@ public class VTPageTable : MonoBehaviour
     {
         get { return m_RegionSize * SplatTileSizeWithPadding; }
     }
-
     /// <summary>
     /// 平铺贴图对象
     /// </summary>
     public RenderTexture mSplatTileTexture;
+    /// <summary>
+    /// 平铺贴图对象
+    /// </summary>
+    public RenderTexture mBakeDiffuseTileTexture;
+    /// <summary>
+    /// 平铺贴图对象
+    /// </summary>
+    public RenderTexture mBakeNormalTileTexture;
     /// <summary>
     /// 加上padding的总长度
     /// </summary>
@@ -105,7 +113,11 @@ public class VTPageTable : MonoBehaviour
     /// <summary>
     /// 合并texture的材质
     /// </summary>
-    private Material _drawTextureMaterial;
+    private Material _drawTextureMaterial; 
+    /// <summary>
+    /// 合并texture的材质
+    /// </summary>
+    private Material _bakeTerrainMaterial;
 
     /// <summary>
     /// 当前激活的Page
@@ -169,11 +181,24 @@ public class VTPageTable : MonoBehaviour
         mHeightTileTexture.filterMode = FilterMode.Point;
         mHeightTileTexture.wrapMode = TextureWrapMode.Clamp;
         
+          
         mSplatTileTexture = new RenderTexture(SplatPageSize, SplatPageSize, 0);
         mSplatTileTexture.format = RenderTextureFormat.ARGB32;
         mSplatTileTexture.useMipMap = false;
         mSplatTileTexture.filterMode = FilterMode.Bilinear;
         mSplatTileTexture.wrapMode = TextureWrapMode.Clamp;
+        
+        mBakeDiffuseTileTexture = new RenderTexture(SplatPageSize, SplatPageSize, 0);
+        mBakeDiffuseTileTexture.format = RenderTextureFormat.ARGB32;
+        mBakeDiffuseTileTexture.useMipMap = false;
+        mBakeDiffuseTileTexture.filterMode = FilterMode.Bilinear;
+        mBakeDiffuseTileTexture.wrapMode = TextureWrapMode.Clamp;
+        
+        mBakeNormalTileTexture = new RenderTexture(SplatPageSize, SplatPageSize, 0);
+        mBakeNormalTileTexture.format = RenderTextureFormat.ARGB32;
+        mBakeNormalTileTexture.useMipMap = false;
+        mBakeNormalTileTexture.filterMode = FilterMode.Bilinear;
+        mBakeNormalTileTexture.wrapMode = TextureWrapMode.Clamp;
         
         mNormalTileTexture = new RenderTexture(NormalPageSize, NormalPageSize, 0);
         mNormalTileTexture.format = RenderTextureFormat.RGB111110Float;
@@ -184,7 +209,34 @@ public class VTPageTable : MonoBehaviour
 
         Shader.SetGlobalTexture("_VTHeightTiledTex", mHeightTileTexture);
         Shader.SetGlobalTexture("_VTSplatTiledTex", mSplatTileTexture);
+        Shader.SetGlobalTexture("_VTBakeNormalTex", mBakeNormalTileTexture);
+        Shader.SetGlobalTexture("_VTBakeDiffuseTex", mBakeDiffuseTileTexture);
         Shader.SetGlobalTexture("_VTNormaltTiledTex", mNormalTileTexture);
+
+
+        #region init bake mat
+
+        _bakeTerrainMaterial = new Material(mBakeTerrainShader);
+        for (int i = 0; i < 4; i++)
+        {
+            var layer = mTerrainData.terrainLayers[i];
+            _bakeTerrainMaterial.SetTexture("_Splat" + i, layer.diffuseTexture);
+            _bakeTerrainMaterial.SetTextureOffset("_Splat" + i, layer.tileOffset);
+            _bakeTerrainMaterial.SetTextureScale("_Splat" + i, (Vector2.one * 2048.0f) / layer.tileSize);
+            _bakeTerrainMaterial.SetTexture("_Normal" + i, layer.normalMapTexture);
+            _bakeTerrainMaterial.SetTexture("_Mask" + i, layer.maskMapTexture);
+            _bakeTerrainMaterial.SetVector("_DiffuseRemapScale"+i, layer.diffuseRemapMax);
+            _bakeTerrainMaterial.SetVector("_MaskMapRemapOffset"+i, layer.maskMapRemapMin);
+            _bakeTerrainMaterial.SetVector("_MaskMapRemapScale"+i, layer.maskMapRemapMax);
+            _bakeTerrainMaterial.SetFloat("_Metallic"+i, layer.metallic);
+            _bakeTerrainMaterial.SetFloat("_Smoothness"+i, layer.smoothness);
+            _bakeTerrainMaterial.SetFloat("_NormalScale"+i, layer.normalScale);
+            _bakeTerrainMaterial.SetFloat("_LayerHasMask" + i, layer.maskMapTexture == null ? 0 : 1);
+        }
+        _bakeTerrainMaterial.EnableKeyword("_NORMALMAP");
+        _bakeTerrainMaterial.EnableKeyword("_MASKMAP");
+
+        #endregion
     }
 
     public void SetQuadTreeData(QuadTreeData config)
@@ -292,14 +344,26 @@ public class VTPageTable : MonoBehaviour
         {
             return;
         }
+        
+        // 初始化绘制材质
+        if (_drawTextureMaterial == null)
+            _drawTextureMaterial = new Material(mDrawTextureShader);
 
-        DrawTexture(handle.Result, mHeightTileTexture,
+        
+        DrawTexture(handle.Result, mHeightTileTexture, _drawTextureMaterial,
             new RectInt(lruNode.x * HeightTileSizeWithPadding, lruNode.y * HeightTileSizeWithPadding, mHeightTileSize, mHeightTileSize));        
-        DrawTexture(handle1.Result, mNormalTileTexture,
-            new RectInt(lruNode.x * NormalTileSizeWithPadding, lruNode.y * NormalTileSizeWithPadding, mHeightTileSize, mNormalTileSize));        
-        DrawTexture(handle2.Result, mSplatTileTexture,
+        DrawTexture(handle1.Result, mNormalTileTexture, _drawTextureMaterial,
+            new RectInt(lruNode.x * NormalTileSizeWithPadding, lruNode.y * NormalTileSizeWithPadding, mHeightTileSize, mHeightTileSize));
+        DrawTexture(handle2.Result, mSplatTileTexture, _drawTextureMaterial,
             new RectInt(lruNode.x * SplatTileSizeWithPadding, lruNode.y * SplatTileSizeWithPadding, mSplatTileSize, mSplatTileSize));
+        _bakeTerrainMaterial.SetTexture("_Control", handle2.Result);
+        DrawTexture(handle2.Result, mBakeDiffuseTileTexture, _bakeTerrainMaterial,
+            new RectInt(lruNode.x * SplatTileSizeWithPadding, lruNode.y * SplatTileSizeWithPadding, mSplatTileSize, mSplatTileSize));    
+        DrawTexture(handle2.Result, mBakeNormalTileTexture, _bakeTerrainMaterial,
+            new RectInt(lruNode.x * SplatTileSizeWithPadding, lruNode.y * SplatTileSizeWithPadding, mSplatTileSize, mSplatTileSize), 1);
         Addressables.Release(handle);
+        Addressables.Release(handle1);
+        Addressables.Release(handle2);
     }
 
     private void DrawLookupTable(RenderPatch patch, bool isHalf)
@@ -355,14 +419,10 @@ public class VTPageTable : MonoBehaviour
         }
     }
 
-    private void DrawTexture(Texture source, RenderTexture target, RectInt position)
+    private void DrawTexture(Texture source, RenderTexture target, Material material,RectInt position, int pass = 0)
     {
         if (source == null || target == null || mDrawTextureShader == null)
             return;
-
-        // 初始化绘制材质
-        if (_drawTextureMaterial == null)
-            _drawTextureMaterial = new Material(mDrawTextureShader);
 
         // 构建变换矩阵
         float l = position.x * 2.0f / target.width - 1;
@@ -379,10 +439,10 @@ public class VTPageTable : MonoBehaviour
         mat.m33 = 1;
 
         // 绘制贴图
-        _drawTextureMaterial.SetMatrix(Shader.PropertyToID("_ImageMVP"), GL.GetGPUProjectionMatrix(mat, true));
+        material.SetMatrix(Shader.PropertyToID("_ImageMVP"), GL.GetGPUProjectionMatrix(mat, true));
 
         target.DiscardContents();
-        Graphics.Blit(source, target, _drawTextureMaterial);
+        Graphics.Blit(source, target, material, pass);
 
 
         //// 绘制贴图

@@ -46,10 +46,10 @@ struct Varyings
 #if defined(DYNAMICLIGHTMAP_ON)
     float2 dynamicLightmapUV        : TEXCOORD9;
 #endif
-    float2 splatUV        : TEXCOORD10;
+    float3 splatUV        : TEXCOORD10;
 
     float4 clipPos                  : SV_POSITION;
-    UNITY_VERTEX_OUTPUT_STEREO
+    uint instanceID : SV_InstanceID;
 };
 
 void InitializeInputData(Varyings IN, half3 normalTS, out InputData inputData)
@@ -237,12 +237,12 @@ void SplatmapFinalColor(inout half4 color, half fogCoord)
 Varyings SplatmapVert(Attributes v, uint instanceID : SV_InstanceID)
 {
     Varyings o = (Varyings)0;
-
+    o.instanceID = instanceID;
     UNITY_SETUP_INSTANCE_ID(v);
+    UNITY_TRANSFER_INSTANCE_ID(v, o);
     UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
     
-    o.splatUV = TerrainInstancing(v.positionOS, v.normalOS, v.texcoord, instanceID);
-    
+    o.splatUV.xy = TerrainInstancing(v.positionOS, v.normalOS, v.texcoord, instanceID);
     VertexPositionInputs Attributes = GetVertexPositionInputs(v.positionOS.xyz);
 
     o.uvMainAndLM.xy = v.texcoord;
@@ -325,6 +325,7 @@ FragmentOutput SplatmapFragment(Varyings IN)
 half4 SplatmapFragment(Varyings IN) : SV_TARGET
 #endif
 {
+    UNITY_SETUP_INSTANCE_ID(IN);
     UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(IN);
 #ifdef _ALPHATEST_ON
     ClipHoles(IN.uvMainAndLM.xy);
@@ -343,41 +344,61 @@ half4 SplatmapFragment(Varyings IN) : SV_TARGET
     half4 masks[4];
     ComputeMasks(masks, hasMask, IN);
 
-    float2 splatUV = IN.splatUV.xy;
-    half4 splatControl = SAMPLE_TEXTURE2D(_VTSplatTiledTex, sampler_VTSplatTiledTex, splatUV);
-    half alpha = dot(splatControl, 1.0h);
+    float3 splatUV = IN.splatUV;
+    // half4 splatControl = SAMPLE_TEXTURE2D(_VTSplatTiledTex, sampler_VTSplatTiledTex, splatUV);
+
+    
+
+    
+    // float alpha = dot(splatControl, 1.0h);
 #ifdef _TERRAIN_BLEND_HEIGHT
     // disable Height Based blend when there are more than 4 layers (multi-pass breaks the normalization)
     if (_NumLayersCount <= 4)
         HeightBasedSplatModify(splatControl, masks);
 #endif
 
-    half weight;
-    half4 mixedDiffuse;
-    half4 defaultSmoothness;
-    SplatmapMix(IN.uvMainAndLM, IN.uvSplat01, IN.uvSplat23, splatControl, weight, mixedDiffuse, defaultSmoothness, normalTS);
-    half3 albedo = mixedDiffuse.rgb;
-    half4 defaultMetallic = half4(_Metallic0, _Metallic1, _Metallic2, _Metallic3);
-    half4 defaultOcclusion = half4(_MaskMapRemapScale0.g, _MaskMapRemapScale1.g, _MaskMapRemapScale2.g, _MaskMapRemapScale3.g) +
-                            half4(_MaskMapRemapOffset0.g, _MaskMapRemapOffset1.g, _MaskMapRemapOffset2.g, _MaskMapRemapOffset3.g);
+    // half weight;
+    // half4 mixedDiffuse;
+    // half4 defaultSmoothness;
+    // SplatmapMix(IN.uvMainAndLM, IN.uvSplat01, IN.uvSplat23, splatControl, weight, mixedDiffuse, defaultSmoothness, normalTS);
+    // half3 albedo = mixedDiffuse.rgb;
+    // half4 defaultMetallic = half4(_Metallic0, _Metallic1, _Metallic2, _Metallic3);
+    // half4 defaultOcclusion = half4(_MaskMapRemapScale0.g, _MaskMapRemapScale1.g, _MaskMapRemapScale2.g, _MaskMapRemapScale3.g) +
+    //                         half4(_MaskMapRemapOffset0.g, _MaskMapRemapOffset1.g, _MaskMapRemapOffset2.g, _MaskMapRemapOffset3.g);
+    //
+    // half4 maskSmoothness = half4(masks[0].a, masks[1].a, masks[2].a, masks[3].a);
+    // defaultSmoothness = lerp(defaultSmoothness, maskSmoothness, hasMask);
+    // half smoothness = dot(splatControl, defaultSmoothness);
+    //
+    // half4 maskMetallic = half4(masks[0].r, masks[1].r, masks[2].r, masks[3].r);
+    // defaultMetallic = lerp(defaultMetallic, maskMetallic, hasMask);
+    // half metallic = dot(splatControl, defaultMetallic);
+    //
+    // half4 maskOcclusion = half4(masks[0].g, masks[1].g, masks[2].g, masks[3].g);
+    // defaultOcclusion = lerp(defaultOcclusion, maskOcclusion, hasMask);
+    // half occlusion = dot(splatControl, defaultOcclusion);
+    // splatUV.xy = CaclSplatUV(splatUV.xy, IN.instanceID);
+    half4 bakeDiffuse = SAMPLE_TEXTURE2D(_VTBakeDiffuseTex, sampler_VTBakeDiffuseTex, splatUV);
+    half4 bakeNormal = SAMPLE_TEXTURE2D(_VTBakeNormalTex, sampler_VTBakeNormalTex, splatUV);
+    half4 splatControl = SAMPLE_TEXTURE2D(_VTSplatTiledTex, sampler_VTSplatTiledTex, splatUV);
+    half3 albedo = bakeDiffuse.rgb;
 
-    half4 maskSmoothness = half4(masks[0].a, masks[1].a, masks[2].a, masks[3].a);
-    defaultSmoothness = lerp(defaultSmoothness, maskSmoothness, hasMask);
-    half smoothness = dot(splatControl, defaultSmoothness);
 
-    half4 maskMetallic = half4(masks[0].r, masks[1].r, masks[2].r, masks[3].r);
-    defaultMetallic = lerp(defaultMetallic, maskMetallic, hasMask);
-    half metallic = dot(splatControl, defaultMetallic);
-
-    half4 maskOcclusion = half4(masks[0].g, masks[1].g, masks[2].g, masks[3].g);
-    defaultOcclusion = lerp(defaultOcclusion, maskOcclusion, hasMask);
-    half occlusion = dot(splatControl, defaultOcclusion);
+    // Now that splatControl has changed, we can compute the final weight and normalize
+    float weight = bakeDiffuse.a;//dot(splatControl, 1.0h);
+    //如果不除以这个weight 视角上会有一条缝
+    albedo /= (weight + HALF_MIN);
+    
+    half smoothness = 0;
+    normalTS.xy = bakeNormal.xy * 2 - 1;
+    normalTS.z = sqrt(1 - normalTS.x * normalTS.x - normalTS.y * normalTS.y);
+    half metallic = bakeNormal.b;
+    half occlusion = bakeNormal.a;
 #endif
 
     InputData inputData;
     InitializeInputData(IN, normalTS, inputData);
     SETUP_DEBUG_TEXTURE_DATA(inputData, IN.uvMainAndLM.xy, _BaseMap);
-
 #if defined(_DBUFFER)
     half3 specular = half3(0.0h, 0.0h, 0.0h);
     ApplyDecal(IN.clipPos,
@@ -415,7 +436,8 @@ half4 SplatmapFragment(Varyings IN) : SV_TARGET
     return BRDFDataToGbuffer(brdfData, inputData, smoothness, color.rgb, occlusion);
 
 #else
-    half4 color = UniversalFragmentPBR(inputData, albedo, metallic, /* specular */ half3(0.0h, 0.0h, 0.0h), smoothness, occlusion, /* emission */ half3(0, 0, 0), alpha);
+    // alpha 
+    half4 color = UniversalFragmentPBR(inputData, albedo, metallic, /* specular */ half3(0.0h, 0.0h, 0.0h), smoothness, occlusion, /* emission */ half3(0, 0, 0), 1);
     SplatmapFinalColor(color, inputData.fogCoord);
     return half4(color.rgb, 1.0h);
 #endif
