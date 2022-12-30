@@ -44,6 +44,15 @@ public class QuadTreeData : ScriptableObject
     /// </summary>
     public int heightMapDeep = 0;
 
+    /// <summary>
+    /// 地形的单位大小
+    /// </summary>
+    public int terrainSize = 2048; 
+    /// <summary>
+    /// splat单个图的大小
+    /// </summary>
+    public int splatSize = 256;
+    
     public Texture2D heightBoundsTexture;
     public QuadTreeLevelConfig[] configs;
     /// <summary>

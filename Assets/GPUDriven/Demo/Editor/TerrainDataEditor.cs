@@ -272,10 +272,12 @@ public class TerrainDataEditor : EditorWindow
                 HeightBoundTexture.Apply(false);
                 AssetDatabase.CreateAsset(HeightBoundTexture, HEIGHT_PATH + "/heightBounds.asset");
                 AssetDatabase.Refresh();
-
+                data.heightBoundsTexture =
+                    AssetDatabase.LoadAssetAtPath<Texture2D>(HEIGHT_PATH + "/heightBounds.asset");
+                data.terrainSize = (int)terrain.terrainData.size.x;
                 data.mapLevel = new Vector2Int(boundDepthX, boundDepthZ);
             }
-
+    
             data.configs = levelConfigs.ToArray();
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();

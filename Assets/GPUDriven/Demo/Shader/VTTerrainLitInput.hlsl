@@ -124,6 +124,7 @@ float4 _VTSplatTiledTex_TexelSize;
 float4 _LookupParam;
 float _HeightTileSize;
 float _SplatTileSize;
+float _SplatTileScale;
 
 TEXTURE2D(_VTSplatTiledTex); 
 SAMPLER( sampler_VTSplatTiledTex);
@@ -195,8 +196,10 @@ float2 TerrainInstancing(inout float4 positionOS, inout float3 normal, inout flo
     texcoord.xy = vertex.xz / 2048;
     normal = _VTNormaltTiledTex.Load(int3(heightPageOffsetX, heightPageOffsetZ, 0)).rgb * 2 - 1;
 
-    float2 splatUV = (tileSize * node_os + scaleTileSize * uv) / _SplatTileSize;
-    splatUV = splatUV * (_SplatTileSize - 1.0) + 0.5f;
+    scaleTileSize = _SplatTileSize * node_os.z;
+    float2 splatUV = (_SplatTileSize * node_os + scaleTileSize * uv) / _SplatTileSize;
+    float offset = 1.0 * _SplatTileScale; // 这里基础偏移是一个像素  放大后就需要乘基础像素
+    splatUV = splatUV * (_SplatTileSize - offset) + offset * 0.5f;
     float splatUVOffsetX = pageX * (_SplatTileSize + _LookupParam.z);;
     float splatUVOffsetZ = pageZ * (_SplatTileSize + _LookupParam.z);
     splatUV += float2(splatUVOffsetX, splatUVOffsetZ);

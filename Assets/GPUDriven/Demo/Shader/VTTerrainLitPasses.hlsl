@@ -390,7 +390,7 @@ half4 SplatmapFragment(Varyings IN) : SV_TARGET
     albedo /= (weight + HALF_MIN);
     
     half smoothness = 0;
-    normalTS.xy = bakeNormal.xy * 2 - 1;
+    normalTS.xy = bakeNormal.xy * 2.0 - 1.0;
     normalTS.z = sqrt(1 - normalTS.x * normalTS.x - normalTS.y * normalTS.y);
     half metallic = bakeNormal.b;
     half occlusion = bakeNormal.a;
@@ -439,7 +439,8 @@ half4 SplatmapFragment(Varyings IN) : SV_TARGET
     // alpha 
     half4 color = UniversalFragmentPBR(inputData, albedo, metallic, /* specular */ half3(0.0h, 0.0h, 0.0h), smoothness, occlusion, /* emission */ half3(0, 0, 0), 1);
     SplatmapFinalColor(color, inputData.fogCoord);
-    return half4(color.rgb, 1.0h);
+    // return half4(normalTS, 1);
+    return half4(albedo.rgb, 1.0h);
 #endif
 }
 

@@ -103,12 +103,14 @@ float4x4 _ImageMVP;
 Varyings SplatmapVert(Attributes v)
 {
     Varyings o = (Varyings)0;
-    o.uvMainAndLM.xy = v.texcoord;
 
-    o.uvSplat01.xy = TRANSFORM_TEX(v.texcoord, _Splat0);
-    o.uvSplat01.zw = TRANSFORM_TEX(v.texcoord, _Splat1);
-    o.uvSplat23.xy = TRANSFORM_TEX(v.texcoord, _Splat2);
-    o.uvSplat23.zw = TRANSFORM_TEX(v.texcoord, _Splat3);
+    o.uvMainAndLM.xy = v.texcoord;
+    float2 texcoord = TRANSFORM_TEX(v.texcoord, _Control);
+
+    o.uvSplat01.xy = TRANSFORM_TEX(texcoord, _Splat0);
+    o.uvSplat01.zw = TRANSFORM_TEX(texcoord, _Splat1);
+    o.uvSplat23.xy = TRANSFORM_TEX(texcoord, _Splat2);
+    o.uvSplat23.zw = TRANSFORM_TEX(texcoord, _Splat3);
 
     // o.positionWS = TransformObjectToWorld(v.positionOS);
     o.clipPos = mul(_ImageMVP, v.positionOS); //TransformWorldToHClip(o.positionWS);
@@ -188,7 +190,7 @@ half4 SplatmapFragment(Varyings IN) : SV_TARGET
     half occlusion = dot(splatControl, defaultOcclusion);
 
 #ifdef _EXPORT_NORMAL
-    return half4((normalTS.xy + 1) / 2, metallic, occlusion);
+    return half4((normalTS.xy + 1.0) / 2.0, metallic, occlusion);
 #else
     return half4(albedo.rgb, weight);
 #endif
