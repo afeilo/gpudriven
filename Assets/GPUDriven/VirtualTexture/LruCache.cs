@@ -10,6 +10,7 @@ namespace VirtualTexture
             public int id = 0;
             public int x = -1;//坐标
             public int y = -1;
+            public bool isLoading = false;
             public NodeInfo Next { get; set; }
             public NodeInfo Prev { get; set; }
             /// <summary>

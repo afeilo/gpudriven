@@ -260,6 +260,8 @@ public class VTPageTable : MonoBehaviour
     {
         for (int i = 0; i < patchs.Length; i++)
         {
+            
+            ActiveRootNode(patchs[i]);
             ActiveNode(patchs[i], isHalf);
             DrawLookupTable(patchs[i], isHalf);
         }
@@ -307,6 +309,13 @@ public class VTPageTable : MonoBehaviour
     {
         return _quadTreeData.GetSplatMapPath((int) patch.position.x, (int) patch.position.y, (int) patch.lod);
     }
+
+    void ActiveRootNode(RenderPatch patch)
+    {
+        patch.lod = (uint)_maxLodLevel;
+        ActiveNode(patch, false);
+    }
+    
     public async void ActiveNode(RenderPatch patch, bool isHalf)
     {
         int key = getHashCode(patch);
@@ -325,10 +334,11 @@ public class VTPageTable : MonoBehaviour
             return;
         }
 
-        lruNode = _lruCache.SetActive(hashCode);
         
         string normalPath = GetNormalMapPath(patch);
         string splatPath = GetSplatMapPath(patch);
+        lruNode = _lruCache.SetActive(hashCode);
+        lruNode.isLoading = true;
         
         //加载对应Node;
         var handle = Addressables.LoadAssetAsync<Texture2D>(path);
@@ -342,8 +352,13 @@ public class VTPageTable : MonoBehaviour
         lruNode = _lruCache.GetNode(hashCode);
         if (null == lruNode)
         {
+            Addressables.Release(handle);
+            Addressables.Release(handle1);
+            Addressables.Release(handle2);
             return;
         }
+
+        lruNode.isLoading = false;
         
         // 初始化绘制材质
         if (_drawTextureMaterial == null)
@@ -374,7 +389,7 @@ public class VTPageTable : MonoBehaviour
         var lruNode = isHalf ? null : _lruCache.GetNode(packDeepHashCodeByLod(hashCode, (int)lod));
         // var lruNode = _lruCache.GetNode(packDeepHashCodeByLod(hashCode, caclLod));
         var nodeOffsetScale = new Vector4(0, 0, 1, 1);
-        while (lruNode == null)
+        while (lruNode == null || lruNode.isLoading)
         {
             var y = (hashCode >> 0) & 1;
             var x = (hashCode >> 1) & 1;
@@ -386,6 +401,8 @@ public class VTPageTable : MonoBehaviour
             hashCode >>= 2;
             caclLod++;
             lruNode = _lruCache.GetNode(packDeepHashCodeByLod(hashCode, caclLod));
+            if (caclLod == _maxLodLevel)
+                break;
         }
 
         var color = new Color(nodeOffsetScale.x, nodeOffsetScale.y, nodeOffsetScale.z,

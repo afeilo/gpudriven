@@ -46,7 +46,7 @@ struct Varyings
 #if defined(DYNAMICLIGHTMAP_ON)
     float2 dynamicLightmapUV        : TEXCOORD9;
 #endif
-    float3 splatUV        : TEXCOORD10;
+    float2 splatUV        : TEXCOORD10;
 
     float4 clipPos                  : SV_POSITION;
     uint instanceID : SV_InstanceID;
@@ -344,7 +344,7 @@ half4 SplatmapFragment(Varyings IN) : SV_TARGET
     half4 masks[4];
     ComputeMasks(masks, hasMask, IN);
 
-    float3 splatUV = IN.splatUV;
+    float2 splatUV = IN.splatUV;
     // half4 splatControl = SAMPLE_TEXTURE2D(_VTSplatTiledTex, sampler_VTSplatTiledTex, splatUV);
 
     
