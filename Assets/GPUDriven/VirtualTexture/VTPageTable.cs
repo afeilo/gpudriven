@@ -179,6 +179,12 @@ public class VTPageTable : MonoBehaviour
 
     void Awake()
     {
+        
+        if (mSplatTileSize % _quadTreeData.splatSize > 0)
+        {
+            Debug.LogError("mSplatTileSize error");
+            return;
+        }
         _lruCache = new LruCache();
         _lruCache.Init(m_RegionSize);
 
@@ -220,12 +226,6 @@ public class VTPageTable : MonoBehaviour
         Shader.SetGlobalTexture("_VTBakeDiffuseTex", mBakeDiffuseTileTexture);
         Shader.SetGlobalTexture("_VTNormaltTiledTex", mNormalTileTexture);
 
-        mSplatTileSize = mSplatTileSize - mSplatTileSize % 256;
-        if (mSplatTileSize <= 0)
-        {
-            Debug.LogError("mSplatTileSize <= 0");
-            return;
-        }
         #region init bake mat
 
         _bakeTerrainMaterial = new Material(mBakeTerrainShader);
