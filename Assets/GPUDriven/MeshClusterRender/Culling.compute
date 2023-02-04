@@ -1,0 +1,82 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+#pragma multi_compile _ _REVERSED_Z  //不reversed 在opengl上很难剔除干净
+#include "../CDLod/CommonInput.hlsl"
+#include "../CDLod/HIZ.hlsl"
+struct CBounds
+{
+    float3 position;
+    float3 extents;
+};
+
+uint instanceCount;
+StructuredBuffer<CBounds> clusterBounds;
+AppendStructuredBuffer<uint> instanceBuffer;
+RWStructuredBuffer<uint> argsBuffer;
+uniform float4 _Planes[6];
+
+uniform float4x4 _MatrixM;
+//获取物体的bounds 这里简单模拟一下local bounds
+Bounds GetBounds(uint index)
+{
+    Bounds bounds;
+    bounds.minPosition = mul(_MatrixM, float4(clusterBounds[index].position - clusterBounds[index].extents, 1));
+    bounds.maxPosition = mul(_MatrixM, float4(clusterBounds[index].position + clusterBounds[index].extents, 1));
+    return bounds;
+}
+
+
+
+bool FrustumCull(Bounds worldBounds)
+{
+
+    float3 minp = worldBounds.minPosition;
+    float3 maxp = worldBounds.maxPosition;
+    
+    float3 positions[8] = {
+        float3(minp.x, minp.y, minp.z),
+        float3(minp.x, maxp.y, minp.z),
+        float3(minp.x, minp.y, maxp.z),
+        float3(minp.x, maxp.y, maxp.z),
+        float3(maxp.x, minp.y, minp.z),
+        float3(maxp.x, maxp.y, minp.z),
+        float3(maxp.x, minp.y, maxp.z),
+        float3(maxp.x, maxp.y, maxp.z),
+    };
+
+    for (int i = 0; i < 6; i++) {
+        float4 plane = _Planes[i];
+        bool isBreak = false;
+        for (int j = 0; j < 8; j++)
+        {
+            float3 pos = positions[j];
+            if ((dot(pos, plane.xyz) + plane.w) >= 0)
+            {
+                isBreak = true;
+                break;
+            }
+        }
+        //所有的点都再平面的背面 那就被提出
+        if (!isBreak)
+            return false;
+    }
+    return true;
+}
+
+bool Culling(uint index)
+{
+    Bounds worldBounds = GetBounds(index);
+    return FrustumCull(worldBounds) && OcclusionCulling(worldBounds);
+}
+
+[numthreads(640,1,1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= instanceCount)
+        return;
+    
+    if (!Culling(id.x))
+        return;
+    instanceBuffer.Append(id.x);
+    InterlockedAdd(argsBuffer[1], 1);
+}
