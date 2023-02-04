@@ -19,8 +19,10 @@ https://user-images.githubusercontent.com/11472358/210044055-fb4fe85e-3ac5-4729-
 https://user-images.githubusercontent.com/11472358/209794788-596a183e-a961-42ee-88cc-d8114dcccb10.mp4
 
 # MeshClusterRender
-- MeshClusterRender：DrawProceduralIndirect + 模型cluster划分 + computeshader + 视锥体剔除 + HIZ剔除 [参考1](https://zhuanlan.zhihu.com/p/425263243)[参考2](https://zhuanlan.zhihu.com/p/44411827)
+- MeshClusterRender：精准剔除 模型cluster划分 + computeshader + 视锥体剔除 + HIZ剔除 + DrawProceduralIndirect [参考1](https://zhuanlan.zhihu.com/p/425263243)[参考2](https://zhuanlan.zhihu.com/p/44411827)
 
 https://user-images.githubusercontent.com/11472358/216742085-ac58e899-dcac-46a0-ba8a-b50bf1c07f03.mp4
 
-- 下一步计划实现分Cluster带Lod的剔除方案，加入三角形剔除
+- 下一步计划实现
+  - 继续完善gpudriven,加入三角面剔除[参考](https://blog.csdn.net/liran2019/article/details/115618046)
+  - 实现Lod，参考Nanite
